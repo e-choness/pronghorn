@@ -173,7 +173,7 @@ export function StandardsTreeManager({ standards, categoryId, onRefresh }: Stand
   );
 }
 
-function AddStandardInline({ onAdd }: { onAdd: (title: string) => void }) {
+function AddStandardInline({ onAdd, onCancel }: { onAdd: (title: string) => void; onCancel?: () => void }) {
   const [isAdding, setIsAdding] = useState(false);
   const [title, setTitle] = useState("");
 
@@ -183,6 +183,12 @@ function AddStandardInline({ onAdd }: { onAdd: (title: string) => void }) {
       setTitle("");
       setIsAdding(false);
     }
+  };
+
+  const handleCancel = () => {
+    setTitle("");
+    setIsAdding(false);
+    onCancel?.();
   };
 
   if (!isAdding) {
@@ -202,12 +208,12 @@ function AddStandardInline({ onAdd }: { onAdd: (title: string) => void }) {
         onChange={(e) => setTitle(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") handleSubmit();
-          if (e.key === "Escape") setIsAdding(false);
+          if (e.key === "Escape") handleCancel();
         }}
         autoFocus
       />
       <Button size="sm" onClick={handleSubmit}>Add</Button>
-      <Button size="sm" variant="outline" onClick={() => setIsAdding(false)}>Cancel</Button>
+      <Button size="sm" variant="outline" onClick={handleCancel}>Cancel</Button>
     </div>
   );
 }
@@ -229,6 +235,7 @@ function StandardNode({
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [isAddingChild, setIsAddingChild] = useState(false);
   const [title, setTitle] = useState(standard.title);
   const [description, setDescription] = useState(standard.description || "");
 
@@ -296,6 +303,9 @@ function StandardNode({
                 </div>
 
                 <div className="flex gap-1 flex-shrink-0">
+                  <Button variant="ghost" size="sm" onClick={() => setIsAddingChild(true)} title="Add sub-standard">
+                    <Plus className="h-3 w-3" />
+                  </Button>
                   <Button variant="ghost" size="sm" onClick={() => setIsEditing(true)} title="Edit">
                     <Edit className="h-3 w-3" />
                   </Button>
@@ -334,12 +344,21 @@ function StandardNode({
       </div>
 
       {/* Children */}
-      {isExpanded && (
+      {(isExpanded || isAddingChild) && (
         <div className="ml-6 mt-2 space-y-2 border-l-2 border-border pl-4">
           {standard.children && standard.children.length > 0 && standard.children.map((child) => (
             <StandardNode key={child.id} standard={child} onAdd={onAdd} onDelete={onDelete} onAIExpand={onAIExpand} onAttachFile={onAttachFile} onRefresh={onRefresh} />
           ))}
-          <AddStandardInline onAdd={(title) => onAdd(standard.id, title)} />
+          {isAddingChild && (
+            <AddStandardInline 
+              onAdd={(title) => {
+                onAdd(standard.id, title);
+                setIsAddingChild(false);
+                setIsExpanded(true);
+              }} 
+              onCancel={() => setIsAddingChild(false)}
+            />
+          )}
         </div>
       )}
     </div>

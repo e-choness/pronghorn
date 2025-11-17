@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { PrimaryNav } from "@/components/layout/PrimaryNav";
 import { Standard } from "@/components/standards/StandardsTree";
-import { StandardsTreeManager } from "@/components/standards/StandardsTreeManager";
+import { CategoryCard } from "@/components/standards/CategoryCard";
 import { ManageCategoriesDialog } from "@/components/standards/ManageCategoriesDialog";
 import { ManageTechStacksDialog } from "@/components/standards/ManageTechStacksDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Search, FolderCog, Layers, LogOut, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -95,6 +95,50 @@ export default function Standards() {
     } else {
       toast.success("Category created");
       setNewCategoryName("");
+      loadCategories();
+    }
+  };
+
+  const handleDeleteCategory = async (categoryId: string) => {
+    if (!isAdmin) {
+      const granted = await requestAdminAccess();
+      if (!granted) {
+        toast.error("Admin access required");
+        return;
+      }
+    }
+
+    if (!confirm("Delete this category and all its standards?")) return;
+
+    const { error } = await supabase.from("standard_categories").delete().eq("id", categoryId);
+
+    if (error) {
+      toast.error("Failed to delete category");
+    } else {
+      toast.success("Category deleted");
+      loadCategories();
+      loadStandards();
+    }
+  };
+
+  const handleUpdateCategory = async (categoryId: string, name: string, description: string) => {
+    if (!isAdmin) {
+      const granted = await requestAdminAccess();
+      if (!granted) {
+        toast.error("Admin access required");
+        return;
+      }
+    }
+
+    const { error } = await supabase
+      .from("standard_categories")
+      .update({ name, description })
+      .eq("id", categoryId);
+
+    if (error) {
+      toast.error("Failed to update category");
+    } else {
+      toast.success("Category updated");
       loadCategories();
     }
   };
@@ -199,18 +243,14 @@ export default function Standards() {
             const categoryStandards = standardsByCategory[category.id] || [];
 
             return (
-              <Card key={category.id}>
-                <CardHeader>
-                  <div className="flex items-center gap-2">
-                    {category.icon && <span className="text-2xl">{category.icon}</span>}
-                    <CardTitle>{category.name}</CardTitle>
-                  </div>
-                  {category.description && <CardDescription>{category.description}</CardDescription>}
-                </CardHeader>
-                <CardContent>
-                  <StandardsTreeManager standards={categoryStandards} categoryId={category.id} onRefresh={loadStandards} />
-                </CardContent>
-              </Card>
+              <CategoryCard
+                key={category.id}
+                category={category}
+                standards={categoryStandards}
+                onDelete={handleDeleteCategory}
+                onUpdate={handleUpdateCategory}
+                onRefresh={() => loadStandards()}
+              />
             );
           })}
         </div>
