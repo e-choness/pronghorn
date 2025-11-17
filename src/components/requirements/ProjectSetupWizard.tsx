@@ -60,17 +60,22 @@ export function ProjectSetupWizard({ open, onClose }: ProjectSetupWizardProps) {
   const handleComplete = async () => {
     setLoading(true);
     try {
-      // Get current user's org
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('org_id')
-        .eq('user_id', user.id)
-        .single();
-
-      if (!profile?.org_id) throw new Error('No organization found');
+      // Get or create default organization
+      let { data: orgs } = await supabase.from('organizations').select('id').limit(1);
+      
+      let orgId: string;
+      if (!orgs || orgs.length === 0) {
+        const { data: newOrg, error: orgError } = await supabase
+          .from('organizations')
+          .insert({ name: 'Default Organization' })
+          .select('id')
+          .single();
+        
+        if (orgError) throw orgError;
+        orgId = newOrg.id;
+      } else {
+        orgId = orgs[0].id;
+      }
 
       // Create project
       const { data: project, error: projectError } = await supabase
@@ -78,7 +83,7 @@ export function ProjectSetupWizard({ open, onClose }: ProjectSetupWizardProps) {
         .insert({
           name: projectName,
           description: projectDescription,
-          org_id: profile.org_id,
+          org_id: orgId,
           status: 'DESIGN'
         })
         .select()
@@ -100,6 +105,11 @@ export function ProjectSetupWizard({ open, onClose }: ProjectSetupWizardProps) {
 
         if (decomposeError) {
           console.error('Decompose error:', decomposeError);
+          toast({
+            title: "Warning",
+            description: "Project created but requirements decomposition failed. You can try again later.",
+            variant: "destructive"
+          });
         }
       }
 
@@ -114,16 +124,19 @@ export function ProjectSetupWizard({ open, onClose }: ProjectSetupWizardProps) {
 
       toast({
         title: "Project created successfully",
-        description: "Your project has been initialized with requirements"
+        description: requirements.trim() 
+          ? "Your requirements have been decomposed into a structured hierarchy"
+          : "You can now add requirements to your project"
       });
 
-      onClose();
+      // Navigate to the new project's requirements page
       navigate(`/project/${project.id}/requirements`);
+      onClose();
     } catch (error) {
-      console.error('Setup error:', error);
+      console.error('Setup wizard error:', error);
       toast({
-        title: "Setup failed",
-        description: error.message,
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to create project",
         variant: "destructive"
       });
     } finally {

@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { PrimaryNav } from "@/components/layout/PrimaryNav";
 import { ProjectCard } from "@/components/dashboard/ProjectCard";
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
-import { CreateProjectDialog } from "@/components/dashboard/CreateProjectDialog";
+import { EnhancedCreateProjectDialog } from "@/components/dashboard/EnhancedCreateProjectDialog";
 import { ProjectSetupWizard } from "@/components/requirements/ProjectSetupWizard";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -47,7 +47,7 @@ export default function Dashboard() {
           <div><h1 className="text-3xl font-bold mb-2">Projects</h1><p className="text-muted-foreground">Manage projects</p></div>
           <div className="flex gap-2">
             <Button onClick={() => setShowWizard(true)}><Sparkles className="h-4 w-4 mr-2" />Setup Wizard</Button>
-            <CreateProjectDialog />
+            <EnhancedCreateProjectDialog />
           </div>
         </div>
         <div className="mb-6"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 max-w-md" /></div>
