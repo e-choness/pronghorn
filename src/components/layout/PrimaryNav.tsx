@@ -1,6 +1,7 @@
 import { Home, Library, Settings, User } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { Button } from "@/components/ui/button";
+import { AdminAccessButton } from "@/components/layout/AdminAccessButton";
 
 export function PrimaryNav() {
   return (
@@ -35,7 +36,8 @@ export function PrimaryNav() {
         </nav>
 
         {/* User Menu */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <AdminAccessButton />
           <Button variant="ghost" size="icon" asChild>
             <NavLink to="/settings/organization">
               <Settings className="h-4 w-4" />

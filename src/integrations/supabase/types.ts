@@ -363,6 +363,7 @@ export type Database = {
       }
       projects: {
         Row: {
+          budget: number | null
           created_at: string
           created_by: string | null
           description: string | null
@@ -371,10 +372,17 @@ export type Database = {
           id: string
           name: string
           org_id: string
+          organization: string | null
+          priority: string | null
+          scope: string | null
           status: Database["public"]["Enums"]["project_status"]
+          tags: string[] | null
+          timeline_end: string | null
+          timeline_start: string | null
           updated_at: string
         }
         Insert: {
+          budget?: number | null
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -383,10 +391,17 @@ export type Database = {
           id?: string
           name: string
           org_id: string
+          organization?: string | null
+          priority?: string | null
+          scope?: string | null
           status?: Database["public"]["Enums"]["project_status"]
+          tags?: string[] | null
+          timeline_end?: string | null
+          timeline_start?: string | null
           updated_at?: string
         }
         Update: {
+          budget?: number | null
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -395,7 +410,13 @@ export type Database = {
           id?: string
           name?: string
           org_id?: string
+          organization?: string | null
+          priority?: string | null
+          scope?: string | null
           status?: Database["public"]["Enums"]["project_status"]
+          tags?: string[] | null
+          timeline_end?: string | null
+          timeline_start?: string | null
           updated_at?: string
         }
         Relationships: [
