@@ -137,7 +137,7 @@ export function AICreateStandardsDialog({ categories, onSuccess }: AICreateStand
       const { data, error } = await supabase.functions.invoke("ai-create-standards", {
         body: {
           input: combinedInput,
-          categoryId: selectedCategory
+          categoryId: categoryId  // Use the local categoryId variable, not selectedCategory
         }
       });
 
