@@ -17,11 +17,11 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface AIDecomposeDialogProps {
   projectId: string;
-  onComplete?: () => void;
+  open: boolean;
+  onClose: () => void;
 }
 
-export function AIDecomposeDialog({ projectId, onComplete }: AIDecomposeDialogProps) {
-  const [open, setOpen] = useState(false);
+export function AIDecomposeDialog({ projectId, open, onClose }: AIDecomposeDialogProps) {
   const [text, setText] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -45,9 +45,8 @@ export function AIDecomposeDialog({ projectId, onComplete }: AIDecomposeDialogPr
       }
 
       toast.success(`Successfully created ${data.epicCount} epics with requirements!`);
-      setOpen(false);
+      onClose();
       setText("");
-      onComplete?.();
     } catch (error) {
       console.error("Error decomposing requirements:", error);
       toast.error(error instanceof Error ? error.message : "Failed to decompose requirements");
@@ -57,13 +56,7 @@ export function AIDecomposeDialog({ projectId, onComplete }: AIDecomposeDialogPr
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" className="gap-2">
-          <Sparkles className="h-4 w-4" />
-          AI Decompose
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle>AI Requirements Decomposition</DialogTitle>
@@ -90,7 +83,7 @@ export function AIDecomposeDialog({ projectId, onComplete }: AIDecomposeDialogPr
         </div>
         
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={isProcessing}>
+          <Button variant="outline" onClick={onClose} disabled={isProcessing}>
             Cancel
           </Button>
           <Button onClick={handleDecompose} disabled={isProcessing || !text.trim()}>

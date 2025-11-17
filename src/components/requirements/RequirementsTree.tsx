@@ -16,6 +16,7 @@ export interface Requirement {
   title: string;
   content?: string;
   children?: Requirement[];
+  parentId?: string;
 }
 
 interface RequirementsTreeProps {
