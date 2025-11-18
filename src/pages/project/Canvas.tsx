@@ -6,6 +6,7 @@ import { CanvasNode } from "@/components/canvas/CanvasNode";
 import { NodePropertiesPanel } from "@/components/canvas/NodePropertiesPanel";
 import { useParams } from "react-router-dom";
 import { useRealtimeCanvas } from "@/hooks/useRealtimeCanvas";
+import { useShareToken } from "@/hooks/useShareToken";
 import ReactFlow, {
 
   Background,
@@ -38,6 +39,7 @@ const ALL_NODE_TYPES: NodeType[] = [
 
 function CanvasFlow() {
   const { projectId } = useParams<{ projectId: string }>();
+  useShareToken(projectId); // Set token in Postgres session for RLS policies
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
