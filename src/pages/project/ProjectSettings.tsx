@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PrimaryNav } from "@/components/layout/PrimaryNav";
 import { ProjectSidebar } from "@/components/layout/ProjectSidebar";
 import { useParams } from "react-router-dom";
@@ -16,6 +16,9 @@ export default function ProjectSettings() {
   const { projectId } = useParams<{ projectId: string }>();
   const shareToken = useShareToken(projectId);
   const queryClient = useQueryClient();
+  const [projectName, setProjectName] = useState("");
+  const [projectDescription, setProjectDescription] = useState("");
+  const [githubRepo, setGithubRepo] = useState("");
 
   const { data: project } = useQuery({
     queryKey: ['project', projectId],
@@ -30,6 +33,39 @@ export default function ProjectSettings() {
       return data;
     },
     enabled: !!projectId,
+  });
+
+  useEffect(() => {
+    if (project) {
+      setProjectName(project.name || "");
+      setProjectDescription(project.description || "");
+      setGithubRepo(project.github_repo || "");
+    }
+  }, [project]);
+
+  const updateProjectMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase
+        .from('projects')
+        .update({ 
+          name: projectName,
+          description: projectDescription,
+          github_repo: githubRepo
+        })
+        .eq('id', projectId)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+      toast.success('Project details updated successfully');
+    },
+    onError: () => {
+      toast.error('Failed to update project details');
+    },
   });
 
   const generateTokenMutation = useMutation({
@@ -152,20 +188,38 @@ export default function ProjectSettings() {
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
                       <Label htmlFor="name">Project Name</Label>
-                      <Input id="name" defaultValue={project?.name} />
+                      <Input 
+                        id="name" 
+                        value={projectName} 
+                        onChange={(e) => setProjectName(e.target.value)}
+                      />
                     </div>
 
                     <div className="space-y-2">
                       <Label htmlFor="description">Description</Label>
-                      <Input id="description" defaultValue={project?.description || ''} />
+                      <Input 
+                        id="description" 
+                        value={projectDescription}
+                        onChange={(e) => setProjectDescription(e.target.value)}
+                      />
                     </div>
 
                     <div className="space-y-2">
                       <Label htmlFor="repo">GitHub Repository</Label>
-                      <Input id="repo" placeholder="owner/repo" defaultValue={project?.github_repo || ''} />
+                      <Input 
+                        id="repo" 
+                        placeholder="owner/repo" 
+                        value={githubRepo}
+                        onChange={(e) => setGithubRepo(e.target.value)}
+                      />
                     </div>
 
-                    <Button>Save Changes</Button>
+                    <Button 
+                      onClick={() => updateProjectMutation.mutate()}
+                      disabled={updateProjectMutation.isPending}
+                    >
+                      {updateProjectMutation.isPending ? 'Saving...' : 'Save Changes'}
+                    </Button>
                   </CardContent>
                 </Card>
               </div>
