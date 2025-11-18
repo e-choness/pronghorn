@@ -325,6 +325,42 @@ export type Database = {
           },
         ]
       }
+      project_standards: {
+        Row: {
+          created_at: string
+          id: string
+          project_id: string
+          standard_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          project_id: string
+          standard_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          project_id?: string
+          standard_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_standards_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_standards_standard_id_fkey"
+            columns: ["standard_id"]
+            isOneToOne: false
+            referencedRelation: "standards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_tech_stacks: {
         Row: {
           created_at: string

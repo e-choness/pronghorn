@@ -5,6 +5,7 @@ import Standards from "./pages/Standards";
 import TechStacks from "./pages/TechStacks";
 import Settings from "./pages/Settings";
 import Requirements from "./pages/project/Requirements";
+import ProjectStandards from "./pages/project/Standards";
 import Canvas from "./pages/project/Canvas";
 import Audit from "./pages/project/Audit";
 import Build from "./pages/project/Build";
@@ -24,6 +25,7 @@ const App = () => (
     
     {/* Project Routes */}
     <Route path="/project/:projectId/requirements" element={<Requirements />} />
+    <Route path="/project/:projectId/standards" element={<ProjectStandards />} />
     <Route path="/project/:projectId/canvas" element={<Canvas />} />
     <Route path="/project/:projectId/audit" element={<Audit />} />
     <Route path="/project/:projectId/build" element={<Build />} />
