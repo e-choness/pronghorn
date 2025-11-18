@@ -80,9 +80,6 @@ export default function Landing() {
         <div className="grid md:grid-cols-2 gap-8 md:gap-12 items-center max-w-7xl mx-auto">
           {/* Left Column - Text Content */}
           <div className="text-center md:text-left order-2 md:order-1">
-            <div className="flex justify-center md:justify-start mb-6 md:mb-8">
-              <PronghornLogo className="h-24 w-24 md:h-32 md:w-32" />
-            </div>
             <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold mb-4 md:mb-6 bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
               Standards-First Development Platform
             </h1>
