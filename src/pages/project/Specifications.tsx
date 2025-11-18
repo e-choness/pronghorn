@@ -96,6 +96,28 @@ export default function Specifications() {
         `)
         .in('requirement_id', requirements?.map(r => r.id) || []);
 
+      // Fetch project-level standards
+      const { data: projectStandards } = await supabase
+        .from('project_standards')
+        .select(`
+          standard_id,
+          standards (
+            id,
+            code,
+            title,
+            description,
+            content,
+            parent_id,
+            category_id,
+            standard_categories (
+              id,
+              name,
+              description
+            )
+          )
+        `)
+        .eq('project_id', projectId);
+
       // Fetch attached files for all requirements
       const requirementFiles: Record<string, any[]> = {};
       
@@ -153,6 +175,7 @@ export default function Specifications() {
           nodes: canvasNodes || [],
           edges: canvasEdges || []
         },
+        projectStandards: projectStandards || [],
         techStacks: projectTechStacks?.map((pts: any) => pts.tech_stacks) || [],
         linkedStandards: reqStandards || []
       };
