@@ -12,7 +12,7 @@ export function useRealtimeCanvas(projectId: string, initialNodes: Node[], initi
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const draggedNodeRef = useRef<string | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const clientId = useRef(crypto.randomUUID());
+  
 
   useEffect(() => {
     if (!projectId || !isTokenSet) {
