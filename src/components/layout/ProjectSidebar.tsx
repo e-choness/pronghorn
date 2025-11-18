@@ -14,12 +14,12 @@ const activeNavItems = [
   { icon: ShieldCheck, label: "Standards", path: "standards" },
   { icon: Layout, label: "Canvas", path: "canvas" },
   { icon: FileText, label: "Specifications", path: "specifications" },
+  { icon: SettingsIcon, label: "Settings", path: "settings" },
 ];
 
 const comingSoonItems = [
   { icon: Hammer, label: "Build" },
   { icon: Code, label: "Repository" },
-  { icon: SettingsIcon, label: "Settings" },
 ];
 
 export function ProjectSidebar({ projectId }: ProjectSidebarProps) {
