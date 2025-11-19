@@ -504,42 +504,40 @@ export function AIArchitectDialog({ projectId, existingNodes, existingEdges, onA
             </div>
 
             <div className="flex-1 flex flex-col min-h-0">
-              <div className="flex items-center justify-between mb-4">
+              <div className="mb-4">
                 <label className="text-sm font-medium">Architecture Critique</label>
-                <Button 
-                  onClick={handleCritic} 
-                  disabled={isCriticizing || existingNodes.length === 0}
-                  size="sm"
-                  variant="outline"
-                >
-                  {isCriticizing ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      Analyzing...
-                    </>
-                  ) : (
-                    <>
-                      <FileSearch className="h-4 w-4 mr-2" />
-                      AI Critic
-                    </>
-                  )}
-                </Button>
               </div>
               <Textarea
                 value={criticFeedback}
                 readOnly
-                placeholder="Click 'AI Critic' to analyze your current architecture and receive recommendations..."
+                placeholder="Click 'Run AI Critic' to analyze your current architecture and receive recommendations..."
                 className="resize-none flex-1 min-h-0"
               />
             </div>
 
-            <div className="flex justify-end gap-2 pt-4 border-t shrink-0">
+            <div className="flex justify-between gap-2 pt-4 border-t shrink-0">
               <Button variant="outline" onClick={() => setOpen(false)}>
                 Close
               </Button>
               <Button 
+                onClick={handleCritic} 
+                disabled={isCriticizing || existingNodes.length === 0 || isGenerating}
+              >
+                {isCriticizing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <FileSearch className="h-4 w-4 mr-2" />
+                    Run AI Critic
+                  </>
+                )}
+              </Button>
+              <Button 
                 onClick={() => handleGenerate(true)} 
-                disabled={!criticFeedback || isGenerating}
+                disabled={!criticFeedback || isGenerating || isCriticizing}
               >
                 {isGenerating ? (
                   <>
