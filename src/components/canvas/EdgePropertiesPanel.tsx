@@ -30,7 +30,7 @@ export function EdgePropertiesPanel({
   useEffect(() => {
     if (edge) {
       setLabel(edge.label as string || "");
-      setLineType(edge.type || "default");
+      setLineType(edge.type || "straight");
       setColor(edge.style?.stroke as string || "#64748b");
       setThickness((edge.style?.strokeWidth as number) || 2);
     }
@@ -117,10 +117,10 @@ export function EdgePropertiesPanel({
               <SelectValue placeholder="Select line type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="default">Straight</SelectItem>
+              <SelectItem value="straight">Straight</SelectItem>
+              <SelectItem value="default">Bezier</SelectItem>
               <SelectItem value="smoothstep">Smooth Step</SelectItem>
               <SelectItem value="step">Step</SelectItem>
-              <SelectItem value="straight">Bezier</SelectItem>
             </SelectContent>
           </Select>
         </div>
