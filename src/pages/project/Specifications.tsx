@@ -379,26 +379,13 @@ export default function Specifications() {
               </Button>
             </div>
 
-            {/* Raw Data Export - Always Available */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Export Raw Data</CardTitle>
-                <CardDescription>
-                  Download complete project data as JSON without AI processing
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    Export all project information including requirements, canvas nodes/edges, linked standards, and tech stacks as structured JSON data.
-                  </p>
-                  <Button onClick={downloadRawJSON} variant="outline" size="lg">
-                    <FileJson className="h-4 w-4 mr-2" />
-                    Download Raw JSON
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            {/* Download Options with Checkboxes */}
+            <DownloadOptions 
+              projectId={projectId || ""}
+              projectName={projectName}
+              shareToken={shareToken}
+              hasGeneratedSpec={hasGeneratedSpec}
+            />
 
             {!generatedSpec && !isGenerating && (
               <Card>
