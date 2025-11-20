@@ -98,23 +98,35 @@ serve(async (req) => {
 
     if (techError) throw techError;
 
-    // Fetch requirement standards (linked standards)
-    const { data: reqStandards, error: stdError } = await supabase
-      .from('requirement_standards')
-      .select(`
-        requirement_id,
-        standard_id,
-        standards (
-          id,
-          title,
-          code,
-          description,
-          content
-        )
-      `)
-      .in('requirement_id', requirements?.map(r => r.id) || []);
+    // Fetch requirement standards (linked standards) - only if we have requirements
+    let reqStandards: any[] = [];
+    if (requirements && requirements.length > 0) {
+      const requirementIds = requirements.map(r => r.id).filter(id => id && id !== '');
+      
+      if (requirementIds.length > 0) {
+        const { data: standards, error: stdError } = await supabase
+          .from('requirement_standards')
+          .select(`
+            requirement_id,
+            standard_id,
+            standards (
+              id,
+              title,
+              code,
+              description,
+              content
+            )
+          `)
+          .in('requirement_id', requirementIds);
 
-    if (stdError) throw stdError;
+        if (stdError) {
+          console.error('Error fetching requirement standards:', stdError);
+          // Don't throw, just log and continue with empty standards
+        } else {
+          reqStandards = standards || [];
+        }
+      }
+    }
 
     // Build context for AI
     const nodesByType = canvasNodes?.reduce((acc: any, node: any) => {
