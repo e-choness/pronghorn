@@ -17,12 +17,12 @@ export function useRealtimeLayers(projectId: string, token: string | null) {
 
   // Fetch initial layers
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || !token) return;
 
     const fetchLayers = async () => {
       const { data, error } = await supabase.rpc("get_canvas_layers_with_token", {
         p_project_id: projectId,
-        p_token: token || null,
+        p_token: token,
       });
 
       if (error) {
@@ -72,10 +72,12 @@ export function useRealtimeLayers(projectId: string, token: string | null) {
   }, [projectId]);
 
   const saveLayer = async (layer: Partial<Layer> & { id: string }) => {
+    if (!token) return;
+
     const { error } = await supabase.rpc("upsert_canvas_layer_with_token", {
       p_id: layer.id,
       p_project_id: projectId,
-      p_token: token || null,
+      p_token: token,
       p_name: layer.name || "Untitled Layer",
       p_node_ids: layer.node_ids || [],
       p_visible: layer.visible ?? true,
@@ -87,9 +89,11 @@ export function useRealtimeLayers(projectId: string, token: string | null) {
   };
 
   const deleteLayer = async (layerId: string) => {
+    if (!token) return;
+
     const { error } = await supabase.rpc("delete_canvas_layer_with_token", {
       p_id: layerId,
-      p_token: token || null,
+      p_token: token,
     });
 
     if (error) {
