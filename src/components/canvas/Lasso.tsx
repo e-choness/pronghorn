@@ -48,11 +48,24 @@ export function Lasso({
 
       const r = el.getBoundingClientRect();
 
+      const left = r.left - rect.left;
+      const right = r.right - rect.left;
+      const top = r.top - rect.top;
+      const bottom = r.bottom - rect.top;
+      const centerX = (left + right) / 2;
+      const centerY = (top + bottom) / 2;
+
+      // Sample multiple points: corners, midpoints, and center
       const localPoints: [number, number][] = [
-        [r.left - rect.left, r.top - rect.top],
-        [r.right - rect.left, r.top - rect.top],
-        [r.right - rect.left, r.bottom - rect.top],
-        [r.left - rect.left, r.bottom - rect.top],
+        [left, top], // top-left corner
+        [right, top], // top-right corner
+        [right, bottom], // bottom-right corner
+        [left, bottom], // bottom-left corner
+        [centerX, top], // top-middle
+        [right, centerY], // right-middle
+        [centerX, bottom], // bottom-middle
+        [left, centerY], // left-middle
+        [centerX, centerY], // center
       ];
 
       nodePoints.current[node.id] = localPoints;
