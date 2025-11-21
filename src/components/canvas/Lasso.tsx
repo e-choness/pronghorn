@@ -1,4 +1,4 @@
-import { useRef, type PointerEvent } from 'react';
+import { useRef, useEffect, type PointerEvent } from 'react';
 import { useReactFlow, useStore, type Node } from 'reactflow';
 import { pointsToPath } from '@/lib/lassoUtils';
 
@@ -23,6 +23,31 @@ export function Lasso({
 
   const nodePoints = useRef<NodePointObject>({});
   const pointRef = useRef<[number, number][]>([]);
+  const shiftKeyPressed = useRef(false);
+  const previouslySelected = useRef<Set<string>>(new Set());
+
+  // Track Shift key state
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        shiftKeyPressed.current = true;
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        shiftKeyPressed.current = false;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
 
   function handlePointerDown(e: PointerEvent) {
     const c = canvas.current;
@@ -36,6 +61,16 @@ export function Lasso({
       e.clientY - rect.top,
     ]];
     pointRef.current = nextPoints;
+
+    // Store currently selected nodes if Shift is held
+    if (shiftKeyPressed.current) {
+      const nodes = getNodes();
+      previouslySelected.current = new Set(
+        nodes.filter(n => n.selected).map(n => n.id)
+      );
+    } else {
+      previouslySelected.current = new Set();
+    }
 
     nodePoints.current = {};
     const nodes = getNodes();
@@ -125,6 +160,11 @@ export function Lasso({
       }
     }
 
+    // Merge with previously selected nodes if Shift is held
+    if (shiftKeyPressed.current) {
+      previouslySelected.current.forEach(id => nodesToSelect.add(id));
+    }
+
     setNodes((nodes) =>
       nodes.map((node) => ({
         ...node,
@@ -139,6 +179,7 @@ export function Lasso({
       c.releasePointerCapture(e.pointerId);
     }
     pointRef.current = [];
+    previouslySelected.current = new Set();
     if (ctx.current) {
       ctx.current.clearRect(0, 0, width, height);
     }
