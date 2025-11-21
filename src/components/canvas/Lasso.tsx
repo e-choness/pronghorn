@@ -25,8 +25,14 @@ export function Lasso({
 
   function handlePointerDown(e: PointerEvent) {
     (e.target as HTMLCanvasElement).setPointerCapture(e.pointerId);
-    
-    const nextPoints = [[e.pageX, e.pageY]] satisfies [number, number][];
+
+    const rect = canvas.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const nextPoints = [[x, y]] satisfies [number, number][];
     pointRef.current = nextPoints;
 
     nodePoints.current = {};
@@ -53,9 +59,15 @@ export function Lasso({
 
   function handlePointerMove(e: PointerEvent) {
     if (e.buttons !== 1) return;
-    
+
+    const rect = canvas.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
     const points = pointRef.current;
-    const nextPoints = [...points, [e.pageX, e.pageY]] satisfies [number, number][];
+    const nextPoints = [...points, [x, y]] satisfies [number, number][];
     pointRef.current = nextPoints;
 
     const path = new Path2D(pointsToPath(nextPoints));
@@ -69,18 +81,26 @@ export function Lasso({
 
     for (const [nodeId, points] of Object.entries(nodePoints.current)) {
       if (partial) {
+        // Partial selection: any corner inside lasso path
         for (const point of points) {
-          const { x, y } = flowToScreenPosition({ x: point[0], y: point[1] });
-          if (ctx.current.isPointInPath(path, x, y)) {
+          const screenPos = flowToScreenPosition({ x: point[0], y: point[1] });
+          const localX = screenPos.x - rect.left;
+          const localY = screenPos.y - rect.top;
+
+          if (ctx.current.isPointInPath(path, localX, localY)) {
             nodesToSelect.add(nodeId);
             break;
           }
         }
       } else {
+        // Full selection: all corners inside lasso path
         let allPointsInPath = true;
         for (const point of points) {
-          const { x, y } = flowToScreenPosition({ x: point[0], y: point[1] });
-          if (!ctx.current.isPointInPath(path, x, y)) {
+          const screenPos = flowToScreenPosition({ x: point[0], y: point[1] });
+          const localX = screenPos.x - rect.left;
+          const localY = screenPos.y - rect.top;
+
+          if (!ctx.current.isPointInPath(path, localX, localY)) {
             allPointsInPath = false;
             break;
           }
