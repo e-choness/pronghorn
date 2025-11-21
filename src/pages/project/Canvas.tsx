@@ -53,7 +53,7 @@ function CanvasFlow() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
   const [showProperties, setShowProperties] = useState(false);
-  const [isPanelOpen, setIsPanelOpen] = useState(true);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [userCollapsedPanel, setUserCollapsedPanel] = useState(false);
   const [copiedNode, setCopiedNode] = useState<Node | null>(null);
   const [visibleNodeTypes, setVisibleNodeTypes] = useState<Set<NodeType>>(

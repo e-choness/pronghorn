@@ -181,14 +181,9 @@ export function NodePropertiesPanel({ node, onClose, onUpdate, onDelete, project
     <div className="w-80 border-l border-border bg-card flex flex-col h-full">
       <div className="p-4 border-b border-border flex items-center justify-between flex-shrink-0">
         <h3 className="font-semibold text-lg">Node Properties</h3>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" onClick={onToggle}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+        <Button variant="ghost" size="icon" onClick={onToggle}>
+          <ChevronRight className="h-4 w-4" />
+        </Button>
       </div>
 
       <ScrollArea className="flex-1">
