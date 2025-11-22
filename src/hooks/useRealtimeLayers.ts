@@ -89,7 +89,7 @@ export function useRealtimeLayers(projectId: string, token: string | null) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [projectId]);
+  }, [projectId, token]);
 
   const saveLayer = async (layer: Partial<Layer> & { id: string }) => {
     // Optimistic update: Update UI immediately

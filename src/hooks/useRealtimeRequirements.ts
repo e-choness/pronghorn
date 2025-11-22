@@ -10,6 +10,66 @@ export function useRealtimeRequirements(
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  const buildHierarchy = (flatList: any[]): Requirement[] => {
+    const map = new Map<string, Requirement>();
+    const roots: Requirement[] = [];
+
+    // Sort by code first
+    const sorted = [...flatList].sort((a, b) => {
+      const codeA = a.code || "";
+      const codeB = b.code || "";
+      return codeA.localeCompare(codeB, undefined, { numeric: true });
+    });
+
+    // First pass: create all nodes
+    sorted.forEach((item) => {
+      map.set(item.id, {
+        id: item.id,
+        code: item.code,
+        type: item.type,
+        title: item.title,
+        content: item.content,
+        parentId: item.parent_id,
+        children: [],
+      });
+    });
+
+    // Second pass: build tree
+    sorted.forEach((item) => {
+      const node = map.get(item.id)!;
+      if (item.parent_id) {
+        const parent = map.get(item.parent_id);
+        if (parent) {
+          parent.children!.push(node);
+        }
+      } else {
+        roots.push(node);
+      }
+    });
+
+    return roots;
+  };
+
+  const loadRequirements = async () => {
+    if (!enabled) return;
+    try {
+      const { data, error } = await supabase.rpc("get_requirements_with_token", {
+        p_project_id: projectId,
+        p_token: shareToken || null,
+      });
+
+      if (error) throw error;
+
+      // Build hierarchical structure
+      const hierarchical = buildHierarchy(data || []);
+      setRequirements(hierarchical);
+    } catch (error) {
+      console.error("Error loading requirements:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!enabled) {
       setIsLoading(false);
@@ -125,67 +185,7 @@ export function useRealtimeRequirements(
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [projectId, enabled, shareToken]);
-
-  const loadRequirements = async () => {
-    if (!enabled) return;
-    try {
-      const { data, error } = await supabase.rpc("get_requirements_with_token", {
-        p_project_id: projectId,
-        p_token: shareToken || null,
-      });
-
-      if (error) throw error;
-
-      // Build hierarchical structure
-      const hierarchical = buildHierarchy(data || []);
-      setRequirements(hierarchical);
-    } catch (error) {
-      console.error("Error loading requirements:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const buildHierarchy = (flatList: any[]): Requirement[] => {
-    const map = new Map<string, Requirement>();
-    const roots: Requirement[] = [];
-
-    // Sort by code first
-    const sorted = [...flatList].sort((a, b) => {
-      const codeA = a.code || "";
-      const codeB = b.code || "";
-      return codeA.localeCompare(codeB, undefined, { numeric: true });
-    });
-
-    // First pass: create all nodes
-    sorted.forEach((item) => {
-      map.set(item.id, {
-        id: item.id,
-        code: item.code,
-        type: item.type,
-        title: item.title,
-        content: item.content,
-        parentId: item.parent_id,
-        children: [],
-      });
-    });
-
-    // Second pass: build tree
-    sorted.forEach((item) => {
-      const node = map.get(item.id)!;
-      if (item.parent_id) {
-        const parent = map.get(item.parent_id);
-        if (parent) {
-          parent.children!.push(node);
-        }
-      } else {
-        roots.push(node);
-      }
-    });
-
-    return roots;
-  };
+  }, [projectId, enabled]);
 
   const addRequirement = async (
     parentId: string | null,
