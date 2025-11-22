@@ -14,10 +14,21 @@ interface AIArchitectDialogProps {
   existingNodes: any[];
   existingEdges: any[];
   onArchitectureGenerated: (nodes: any[], edges: any[]) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function AIArchitectDialog({ projectId, existingNodes, existingEdges, onArchitectureGenerated }: AIArchitectDialogProps) {
-  const [open, setOpen] = useState(false);
+export function AIArchitectDialog({ 
+  projectId, 
+  existingNodes, 
+  existingEdges, 
+  onArchitectureGenerated,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange
+}: AIArchitectDialogProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setOpen = controlledOnOpenChange || setInternalOpen;
   const [description, setDescription] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isCriticizing, setIsCriticizing] = useState(false);
@@ -297,12 +308,6 @@ export function AIArchitectDialog({ projectId, existingNodes, existingEdges, onA
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" className="gap-2" data-ai-architect-trigger>
-          <Sparkles className="h-4 w-4" />
-          AI Architect
-        </Button>
-      </DialogTrigger>
       <DialogContent className="max-w-[95vw] md:max-w-[80vw] h-[90vh] md:h-[80vh] w-full flex flex-col p-3 md:p-6">
         <DialogHeader className="pb-2 md:pb-4">
           <DialogTitle className="text-base md:text-lg">AI Application Architect</DialogTitle>
