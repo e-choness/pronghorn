@@ -23,7 +23,7 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { Button } from "@/components/ui/button";
-import { ZoomIn, ZoomOut, Maximize, Camera, Lasso as LassoIcon, Image, ChevronRight, Wrench } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize, Camera, Lasso as LassoIcon, Image, ChevronRight, Wrench, Sparkles, FileSearch } from "lucide-react";
 import { AIArchitectDialog } from "@/components/canvas/AIArchitectDialog";
 import { useToast } from "@/hooks/use-toast";
 import { toPng, toSvg } from "html-to-image";
@@ -62,6 +62,7 @@ function CanvasFlow() {
   );
   const [isLassoActive, setIsLassoActive] = useState(false);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
+  const [isAIArchitectOpen, setIsAIArchitectOpen] = useState(false);
   const { toast } = useToast();
   const isMobile = useIsMobile();
 
@@ -627,6 +628,15 @@ function CanvasFlow() {
           
           <div className="flex-1 relative" ref={reactFlowWrapper}>
             <TooltipProvider>
+              <AIArchitectDialog
+                projectId={projectId!}
+                existingNodes={nodes}
+                existingEdges={edges}
+                onArchitectureGenerated={handleArchitectureGenerated}
+                open={isAIArchitectOpen}
+                onOpenChange={setIsAIArchitectOpen}
+              />
+              
               <div className="absolute top-4 left-4 z-10 flex gap-2">
                 {isMobile ? (
                   <DropdownMenu>
@@ -636,32 +646,41 @@ function CanvasFlow() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent className="bg-popover z-50">
-                      <DropdownMenuItem onClick={() => {
-                        // Trigger AI Architect modal - we'll need to expose this
-                        const aiButton = document.querySelector('[data-ai-architect-trigger]') as HTMLElement;
-                        aiButton?.click();
-                      }}>
+                      <DropdownMenuItem onClick={() => setIsAIArchitectOpen(true)}>
+                        <Sparkles className="h-4 w-4 mr-2" />
                         AI Architect
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => setIsLassoActive(!isLassoActive)}>
+                        <LassoIcon className="h-4 w-4 mr-2" />
                         {isLassoActive ? "Disable" : "Enable"} Lasso Select
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleDownloadSnapshot('png')}>
+                        <Image className="h-4 w-4 mr-2" />
                         Export PNG
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleDownloadSnapshot('svg')}>
+                        <FileSearch className="h-4 w-4 mr-2" />
                         Export SVG
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 ) : (
                   <>
-                    <AIArchitectDialog
-                      projectId={projectId!}
-                      existingNodes={nodes}
-                      existingEdges={edges}
-                      onArchitectureGenerated={handleArchitectureGenerated}
-                    />
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          onClick={() => setIsAIArchitectOpen(true)}
+                          variant="outline"
+                          className="bg-card/80"
+                          size="icon"
+                        >
+                          <Sparkles className="w-4 h-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        <p>AI Architect</p>
+                      </TooltipContent>
+                    </Tooltip>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
