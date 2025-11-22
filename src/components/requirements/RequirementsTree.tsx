@@ -143,7 +143,7 @@ function RequirementNode({ requirement, level = 0, projectId, shareToken, onUpda
         </div>
       ) : (
         <div className="group py-2 px-2 rounded-md hover:bg-muted/50" style={{ paddingLeft: `${level * 20 + 8}px` }}>
-          <div className="flex items-start gap-2">
+          <div className="flex flex-col md:flex-row items-start gap-2">
             <div className="flex items-center gap-2 flex-shrink-0">
               {hasChildren ? (
                 <Button 
@@ -197,7 +197,7 @@ function RequirementNode({ requirement, level = 0, projectId, shareToken, onUpda
             
             {/* Action buttons - on mobile below, on desktop to the right with always visible */}
             <TooltipProvider>
-              <div className="flex md:flex-row flex-wrap gap-1 mt-2 md:mt-0 md:ml-2 md:items-start md:flex-shrink-0 w-full md:w-auto pl-14 md:pl-0">
+              <div className="flex md:flex-row flex-wrap gap-1 md:ml-2 md:items-start md:flex-shrink-0 w-full md:w-auto pl-14 md:pl-0">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button 
