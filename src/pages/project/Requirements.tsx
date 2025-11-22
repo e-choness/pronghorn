@@ -11,11 +11,18 @@ import { useParams } from "react-router-dom";
 import { useRealtimeRequirements } from "@/hooks/useRealtimeRequirements";
 import { useShareToken } from "@/hooks/useShareToken";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function Requirements() {
   const { projectId } = useParams<{ projectId: string }>();
   const { token: shareToken, isTokenSet } = useShareToken(projectId);
-  const { requirements, isLoading, addRequirement, updateRequirement, deleteRequirement, refresh } = useRealtimeRequirements(projectId!);
+  const { user } = useAuth();
+  const hasAccessToken = !!shareToken || !!user;
+  const { requirements, isLoading, addRequirement, updateRequirement, deleteRequirement, refresh } = useRealtimeRequirements(
+    projectId!,
+    shareToken || null,
+    hasAccessToken
+  );
   const [showAIDialog, setShowAIDialog] = useState(false);
   const [linkReq, setLinkReq] = useState<{ id: string; title: string } | null>(null);
 
@@ -26,6 +33,26 @@ export default function Requirements() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <p className="text-destructive">Invalid project ID</p>
+      </div>
+    );
+  }
+
+  // If user is anonymous and no share token is present, block access
+  if (!hasAccessToken) {
+    return (
+      <div className="min-h-screen bg-background">
+        <PrimaryNav />
+        <div className="flex relative">
+          <ProjectSidebar projectId={projectId} />
+          <main className="flex-1 w-full flex items-center justify-center">
+            <div className="text-center space-y-2 max-w-md px-4">
+              <h1 className="text-xl font-semibold">Share token required</h1>
+              <p className="text-sm text-muted-foreground">
+                This project can only be accessed via its secure sharing link. Please use the full URL that includes the <code>?token=</code> parameter.
+              </p>
+            </div>
+          </main>
+        </div>
       </div>
     );
   }

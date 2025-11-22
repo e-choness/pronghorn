@@ -1,15 +1,21 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Requirement } from "@/components/requirements/RequirementsTree";
-import { useSearchParams } from "react-router-dom";
 
-export function useRealtimeRequirements(projectId: string) {
-  const [searchParams] = useSearchParams();
-  const shareToken = searchParams.get("token");
+export function useRealtimeRequirements(
+  projectId: string,
+  shareToken: string | null,
+  enabled: boolean = true
+) {
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    if (!enabled) {
+      setIsLoading(false);
+      return;
+    }
+
     // Initial load
     loadRequirements();
 
@@ -34,13 +40,14 @@ export function useRealtimeRequirements(projectId: string) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [projectId]);
+  }, [projectId, enabled, shareToken]);
 
   const loadRequirements = async () => {
+    if (!enabled) return;
     try {
       const { data, error } = await supabase.rpc("get_requirements_with_token", {
         p_project_id: projectId,
-        p_token: shareToken || null
+        p_token: shareToken || null,
       });
 
       if (error) throw error;
