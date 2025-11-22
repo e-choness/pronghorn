@@ -543,7 +543,7 @@ function CanvasFlow() {
         return;
       }
 
-      const flowWrapper = document.querySelector('.react-flow') as HTMLElement;
+      const flowWrapper = reactFlowWrapper.current;
       if (!flowWrapper) {
         toast({
           title: "Error",
