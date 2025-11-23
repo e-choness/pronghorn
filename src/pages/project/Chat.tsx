@@ -200,28 +200,69 @@ export default function Chat() {
       let fullResponse = "";
 
       if (reader) {
+        let buffer = "";
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
-          const chunk = decoder.decode(value);
-          const lines = chunk.split("\n");
+          const chunk = decoder.decode(value, { stream: true });
+          buffer += chunk;
+
+          const lines = buffer.split("\n");
+          // Keep the last partial line (if any) in the buffer
+          buffer = lines.pop() || "";
 
           for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              const data = line.slice(6);
-              if (data === "[DONE]") continue;
+            if (!line.startsWith("data: ")) continue;
 
-              try {
-                const parsed = JSON.parse(data);
-                const content = parsed.choices?.[0]?.delta?.content || "";
-                if (content) {
-                  fullResponse += content;
-                  setStreamingContent(fullResponse);
-                }
-              } catch (e) {
-                // Ignore parse errors
+            const data = line.slice(6).trim();
+            if (!data) continue;
+
+            try {
+              const parsed = JSON.parse(data);
+
+              // New agent-style format: { type: "delta", text: "..." }
+              if (parsed.type === "delta" && typeof parsed.text === "string") {
+                fullResponse += parsed.text;
+                setStreamingContent(fullResponse);
+                continue;
               }
+
+              // Ignore explicit done events in this format
+              if (parsed.type === "done") {
+                continue;
+              }
+
+              // Fallback for OpenAI-style streaming: { choices[0].delta.content }
+              const content = parsed.choices?.[0]?.delta?.content || "";
+              if (content) {
+                fullResponse += content;
+                setStreamingContent(fullResponse);
+              }
+            } catch (e) {
+              // Ignore parse errors for malformed / partial lines
+              console.error("Error parsing stream line", e);
+            }
+          }
+        }
+
+        // Flush any remaining buffered line
+        if (buffer.trim().startsWith("data: ")) {
+          const data = buffer.trim().slice(6).trim();
+          if (data) {
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.type === "delta" && typeof parsed.text === "string") {
+                fullResponse += parsed.text;
+                setStreamingContent(fullResponse);
+              } else if (!parsed.type && parsed.choices?.[0]?.delta?.content) {
+                const content = parsed.choices[0].delta.content;
+                fullResponse += content;
+                setStreamingContent(fullResponse);
+              }
+            } catch (e) {
+              console.error("Error parsing final stream buffer", e);
             }
           }
         }
