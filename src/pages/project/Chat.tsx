@@ -13,6 +13,8 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useQuery } from "@tanstack/react-query";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   Dialog,
   DialogContent,
@@ -351,7 +353,15 @@ export default function Chat() {
                           }`}
                         >
                           <div className="flex items-start justify-between gap-4">
-                            <div className="whitespace-pre-wrap flex-1">{message.content}</div>
+                            <div className="prose prose-sm dark:prose-invert max-w-none flex-1">
+                              {message.role === "user" ? (
+                                <div className="whitespace-pre-wrap">{message.content}</div>
+                              ) : (
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                  {message.content}
+                                </ReactMarkdown>
+                              )}
+                            </div>
                             <div className="flex gap-1 flex-shrink-0">
                               <Button
                                 variant="ghost"
@@ -381,7 +391,11 @@ export default function Chat() {
                     {streamingContent && (
                       <div className="flex gap-4 justify-start">
                         <Card className="max-w-[80%] p-4">
-                          <div className="whitespace-pre-wrap">{streamingContent}</div>
+                          <div className="prose prose-sm dark:prose-invert max-w-none">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {streamingContent}
+                            </ReactMarkdown>
+                          </div>
                         </Card>
                       </div>
                     )}
