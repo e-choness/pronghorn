@@ -55,6 +55,7 @@ export default function Chat() {
   const [editingTitle, setEditingTitle] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSummaryDialog, setShowSummaryDialog] = useState(false);
+  const [optimisticMessages, setOptimisticMessages] = useState<Array<{id: string, role: string, content: string, created_at: string}>>([]);
   const isMobile = useIsMobile();
 
   const { messages, addMessage, refresh: refreshMessages } = useRealtimeChatMessages(
@@ -181,21 +182,25 @@ export default function Chat() {
     const userMessage = inputMessage.trim();
     setInputMessage("");
     
-    // Add user message optimistically
-    const tempUserMessage = { 
-      id: `temp-${Date.now()}`, 
-      role: "user" as const, 
+    // Add user message optimistically to UI immediately
+    const optimisticUserMsg = { 
+      id: `temp-user-${Date.now()}`, 
+      role: "user", 
       content: userMessage, 
       created_at: new Date().toISOString() 
     };
+    setOptimisticMessages(prev => [...prev, optimisticUserMsg]);
 
     // Start streaming AI response
     setIsStreaming(true);
     setStreamingContent("");
 
     try {
-      // Add user message to DB
-      await addMessage("user", userMessage);
+      // Add user message to DB (in background)
+      addMessage("user", userMessage).then(() => {
+        // Remove optimistic message once real one is in DB
+        setOptimisticMessages(prev => prev.filter(m => m.id !== optimisticUserMsg.id));
+      });
 
       const model = project?.selected_model || "gemini-2.5-flash";
       let edgeFunctionName = "chat-stream-gemini";
@@ -650,7 +655,9 @@ export default function Chat() {
 
                 <ScrollArea className="flex-1 p-4">
                   <div className="space-y-6">
-                    {messages.map((message) => (
+                    {[...messages, ...optimisticMessages].sort((a, b) => 
+                      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+                    ).map((message) => (
                       <div
                         key={message.id}
                         className={`flex ${
