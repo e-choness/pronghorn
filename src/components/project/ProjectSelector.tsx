@@ -21,7 +21,8 @@ import {
   Network, 
   Info,
   CheckSquare,
-  Square
+  Square,
+  Loader2
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -33,15 +34,15 @@ import { ChatSessionsListSelector } from "./ChatSessionsListSelector";
 import { CanvasItemsSelector } from "./CanvasItemsSelector";
 
 export interface ProjectSelectionResult {
-  projectMetadata: boolean;
-  artifacts: string[];
-  chatSessions: string[];
-  requirements: string[];
-  standards: string[];
-  techStacks: string[];
-  canvasNodes: string[];
-  canvasEdges: string[];
-  canvasLayers: string[];
+  projectMetadata: any | null;
+  artifacts: any[];
+  chatSessions: any[];
+  requirements: any[];
+  standards: any[];
+  techStacks: any[];
+  canvasNodes: any[];
+  canvasEdges: any[];
+  canvasLayers: any[];
 }
 
 interface ProjectSelectorProps {
@@ -123,7 +124,8 @@ export function ProjectSelector({
   initialSelection
 }: ProjectSelectorProps) {
   const [activeCategory, setActiveCategory] = useState<CategoryType>("metadata");
-  const [includeMetadata, setIncludeMetadata] = useState(initialSelection?.projectMetadata ?? false);
+  const [includeMetadata, setIncludeMetadata] = useState(initialSelection?.projectMetadata ? true : false);
+  const [isLoadingContent, setIsLoadingContent] = useState(false);
   const [selectedArtifacts, setSelectedArtifacts] = useState<Set<string>>(
     new Set(initialSelection?.artifacts ?? [])
   );
@@ -248,21 +250,130 @@ export function ProjectSelector({
     }
   };
 
-  const handleConfirm = () => {
-    const result: ProjectSelectionResult = {
-      projectMetadata: includeMetadata,
-      artifacts: Array.from(selectedArtifacts),
-      chatSessions: Array.from(selectedChats),
-      requirements: Array.from(selectedRequirements),
-      standards: Array.from(selectedStandards),
-      techStacks: Array.from(selectedTechStacks),
-      canvasNodes: Array.from(selectedNodes),
-      canvasEdges: Array.from(selectedEdges),
-      canvasLayers: Array.from(selectedLayers)
-    };
+  const handleConfirm = async () => {
+    setIsLoadingContent(true);
+    
+    try {
+      // Fetch project metadata if selected
+      let projectMetadata = null;
+      if (includeMetadata) {
+        const { data, error } = await supabase.rpc("get_project_with_token", {
+          p_project_id: projectId,
+          p_token: shareToken || null
+        });
+        if (error) throw error;
+        projectMetadata = data;
+      }
 
-    onConfirm(result);
-    onClose();
+      // Fetch artifacts
+      const artifacts = [];
+      if (selectedArtifacts.size > 0) {
+        const { data, error } = await supabase.rpc("get_artifacts_with_token", {
+          p_project_id: projectId,
+          p_token: shareToken || null
+        });
+        if (error) throw error;
+        artifacts.push(...(data || []).filter((a: any) => selectedArtifacts.has(a.id)));
+      }
+
+      // Fetch chat sessions
+      const chatSessions = [];
+      if (selectedChats.size > 0) {
+        const { data, error } = await supabase.rpc("get_chat_sessions_with_token", {
+          p_project_id: projectId,
+          p_token: shareToken || null
+        });
+        if (error) throw error;
+        chatSessions.push(...(data || []).filter((c: any) => selectedChats.has(c.id)));
+      }
+
+      // Fetch requirements
+      const requirements = [];
+      if (selectedRequirements.size > 0) {
+        const { data, error } = await supabase.rpc("get_requirements_with_token", {
+          p_project_id: projectId,
+          p_token: shareToken || null
+        });
+        if (error) throw error;
+        requirements.push(...(data || []).filter((r: any) => selectedRequirements.has(r.id)));
+      }
+
+      // Fetch standards
+      const standards = [];
+      if (selectedStandards.size > 0) {
+        const { data: standardsData } = await supabase
+          .from("standards")
+          .select("*")
+          .in("id", Array.from(selectedStandards));
+        
+        standards.push(...(standardsData || []));
+      }
+
+      // Fetch tech stacks
+      const techStacksData = [];
+      if (selectedTechStacks.size > 0) {
+        const { data: tsData } = await supabase
+          .from("tech_stacks")
+          .select("*")
+          .in("id", Array.from(selectedTechStacks));
+        
+        techStacksData.push(...(tsData || []));
+      }
+
+      // Fetch canvas nodes
+      const canvasNodes = [];
+      if (selectedNodes.size > 0) {
+        const { data, error } = await supabase.rpc("get_canvas_nodes_with_token", {
+          p_project_id: projectId,
+          p_token: shareToken || null
+        });
+        if (error) throw error;
+        canvasNodes.push(...(data || []).filter((n: any) => selectedNodes.has(n.id)));
+      }
+
+      // Fetch canvas edges
+      const canvasEdges = [];
+      if (selectedEdges.size > 0) {
+        const { data, error } = await supabase.rpc("get_canvas_edges_with_token", {
+          p_project_id: projectId,
+          p_token: shareToken || null
+        });
+        if (error) throw error;
+        canvasEdges.push(...(data || []).filter((e: any) => selectedEdges.has(e.id)));
+      }
+
+      // Fetch canvas layers
+      const canvasLayers = [];
+      if (selectedLayers.size > 0) {
+        const { data, error } = await supabase.rpc("get_canvas_layers_with_token", {
+          p_project_id: projectId,
+          p_token: shareToken || null
+        });
+        if (error) throw error;
+        canvasLayers.push(...(data || []).filter((l: any) => selectedLayers.has(l.id)));
+      }
+
+      const result: ProjectSelectionResult = {
+        projectMetadata,
+        artifacts,
+        chatSessions,
+        requirements,
+        standards,
+        techStacks: techStacksData,
+        canvasNodes,
+        canvasEdges,
+        canvasLayers
+      };
+
+      onConfirm(result);
+      onClose();
+      toast.success("Content retrieved successfully");
+    } catch (error) {
+      console.error("Error retrieving content:", error);
+      toast.error("Failed to retrieve content");
+    } finally {
+      setIsLoadingContent(false);
+    }
   };
 
   const handleSelectAll = () => {
@@ -452,11 +563,18 @@ export function ProjectSelector({
               </Button>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={onClose}>
+              <Button variant="outline" onClick={onClose} disabled={isLoadingContent}>
                 Cancel
               </Button>
-              <Button onClick={handleConfirm}>
-                Add Selected ({getTotalSelected()})
+              <Button onClick={handleConfirm} disabled={isLoadingContent}>
+                {isLoadingContent ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Retrieving Content...
+                  </>
+                ) : (
+                  `Add Selected (${getTotalSelected()})`
+                )}
               </Button>
             </div>
           </div>

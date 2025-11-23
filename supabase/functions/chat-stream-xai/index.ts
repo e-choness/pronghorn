@@ -19,10 +19,7 @@ serve(async (req) => {
       tools = [], 
       model = "grok-4-fast-non-reasoning",
       maxOutputTokens = 16384,
-      attachedContext = null,
-      attachedContextPayload = null,
-      projectId = null,
-      shareToken = null
+      attachedContext = null
     } = await req.json();
 
     const XAI_API_KEY = Deno.env.get('XAI_API_KEY');
@@ -33,46 +30,44 @@ serve(async (req) => {
     // Build enriched system prompt with attached context
     let enrichedSystemPrompt = systemPrompt;
     
-    if ((attachedContext || attachedContextPayload) && projectId) {
+    if (attachedContext) {
       const contextParts: string[] = [];
-      const selection = attachedContextPayload?.selection || attachedContext;
 
-      if (selection?.projectMetadata || attachedContextPayload?.project) {
+      if (attachedContext.projectMetadata) {
         contextParts.push("PROJECT METADATA: included");
       }
-      if (selection?.requirements?.length) {
-        contextParts.push(`REQUIREMENTS: ${selection.requirements.length} requirements attached`);
+      if (attachedContext.artifacts?.length) {
+        contextParts.push(`ARTIFACTS: ${attachedContext.artifacts.length} artifacts attached`);
       }
-      if (selection?.standards?.length) {
-        contextParts.push(`STANDARDS: ${selection.standards.length} standards attached`);
+      if (attachedContext.chatSessions?.length) {
+        contextParts.push(`CHAT SESSIONS: ${attachedContext.chatSessions.length} sessions attached`);
       }
-      if (selection?.artifacts?.length || attachedContextPayload?.artifacts?.length) {
-        const count = attachedContextPayload?.artifacts?.length || selection.artifacts.length;
-        contextParts.push(`ARTIFACTS: ${count} artifacts attached`);
+      if (attachedContext.requirements?.length) {
+        contextParts.push(`REQUIREMENTS: ${attachedContext.requirements.length} requirements attached`);
       }
-      if (selection?.techStacks?.length) {
-        contextParts.push(`TECH STACKS: ${selection.techStacks.length} tech stacks attached`);
+      if (attachedContext.standards?.length) {
+        contextParts.push(`STANDARDS: ${attachedContext.standards.length} standards attached`);
       }
-      if (selection?.canvasNodes?.length || attachedContextPayload?.canvasNodes?.length) {
-        const count = attachedContextPayload?.canvasNodes?.length || selection.canvasNodes.length;
-        contextParts.push(`CANVAS NODES: ${count} nodes attached`);
+      if (attachedContext.techStacks?.length) {
+        contextParts.push(`TECH STACKS: ${attachedContext.techStacks.length} tech stacks attached`);
       }
-      if (selection?.canvasEdges?.length) {
-        contextParts.push(`CANVAS EDGES: ${selection.canvasEdges.length} edges attached`);
+      if (attachedContext.canvasNodes?.length) {
+        contextParts.push(`CANVAS NODES: ${attachedContext.canvasNodes.length} nodes attached`);
       }
-      if (selection?.canvasLayers?.length) {
-        contextParts.push(`CANVAS LAYERS: ${selection.canvasLayers.length} layers attached`);
+      if (attachedContext.canvasEdges?.length) {
+        contextParts.push(`CANVAS EDGES: ${attachedContext.canvasEdges.length} edges attached`);
+      }
+      if (attachedContext.canvasLayers?.length) {
+        contextParts.push(`CANVAS LAYERS: ${attachedContext.canvasLayers.length} layers attached`);
       }
 
-      const contextJson = attachedContextPayload || selection;
-
-      if (contextParts.length > 0 && contextJson) {
-        const jsonString = JSON.stringify(contextJson);
-        const truncatedJson = jsonString.length > 12000
-          ? jsonString.slice(0, 12000) + "...[truncated]"
+      if (contextParts.length > 0) {
+        const jsonString = JSON.stringify(attachedContext, null, 2);
+        const truncatedJson = jsonString.length > 50000
+          ? jsonString.slice(0, 50000) + "\n...[truncated for length]"
           : jsonString;
 
-        enrichedSystemPrompt = `${systemPrompt}\n\nATTACHED PROJECT CONTEXT SUMMARY:\n${contextParts.join("\n")}\n\nATTACHED_PROJECT_CONTEXT_JSON:\n${truncatedJson}`;
+        enrichedSystemPrompt = `${systemPrompt}\n\n===== ATTACHED PROJECT CONTEXT =====\n${contextParts.join("\n")}\n\n===== FULL CONTEXT DATA =====\n${truncatedJson}\n\nPlease use the above context to inform your responses. The context includes full object data with all properties and content.`;
       }
     }
 
