@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useShareToken } from "@/hooks/useShareToken";
 import { useRealtimeArtifacts } from "@/hooks/useRealtimeArtifacts";
-import { Plus, Search, Trash2, Edit2, Sparkles } from "lucide-react";
+import { Plus, Search, Trash2, Edit2, Sparkles, LayoutGrid, List } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -20,6 +20,15 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Label } from "@/components/ui/label";
 
 export default function Artifacts() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -32,8 +41,10 @@ export default function Artifacts() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [editingArtifact, setEditingArtifact] = useState<any>(null);
+  const [editingTitle, setEditingTitle] = useState("");
   const [newContent, setNewContent] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
 
   const filteredArtifacts = artifacts.filter((artifact) =>
     (artifact.content?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -50,8 +61,9 @@ export default function Artifacts() {
 
   const handleUpdateArtifact = async () => {
     if (!editingArtifact) return;
-    await updateArtifact(editingArtifact.id, editingArtifact.content);
+    await updateArtifact(editingArtifact.id, editingArtifact.content, editingTitle || undefined);
     setEditingArtifact(null);
+    setEditingTitle("");
   };
 
   const handleSummarize = async (artifact: any) => {
@@ -66,6 +78,11 @@ export default function Artifacts() {
       console.error("Error summarizing artifact:", error);
       toast.error("Failed to summarize artifact");
     }
+  };
+
+  const handleEditClick = (artifact: any) => {
+    setEditingArtifact(artifact);
+    setEditingTitle(artifact.ai_title || "");
   };
 
   return (
@@ -85,35 +102,53 @@ export default function Artifacts() {
                     Reusable knowledge blocks for your project
                   </p>
                 </div>
-                <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Artifact
+                <div className="flex gap-2">
+                  <div className="flex border rounded-md">
+                    <Button
+                      variant={viewMode === "cards" ? "secondary" : "ghost"}
+                      size="icon"
+                      onClick={() => setViewMode("cards")}
+                    >
+                      <LayoutGrid className="h-4 w-4" />
                     </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-2xl">
-                    <DialogHeader>
-                      <DialogTitle>Add New Artifact</DialogTitle>
-                      <DialogDescription>
-                        Create a reusable knowledge block for your project
-                      </DialogDescription>
-                    </DialogHeader>
-                    <Textarea
-                      value={newContent}
-                      onChange={(e) => setNewContent(e.target.value)}
-                      placeholder="Paste or type your artifact content here..."
-                      rows={12}
-                      className="resize-none"
-                    />
-                    <div className="flex gap-2 justify-end">
-                      <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-                        Cancel
+                    <Button
+                      variant={viewMode === "table" ? "secondary" : "ghost"}
+                      size="icon"
+                      onClick={() => setViewMode("table")}
+                    >
+                      <List className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Artifact
                       </Button>
-                      <Button onClick={handleAddArtifact}>Create Artifact</Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-2xl">
+                      <DialogHeader>
+                        <DialogTitle>Add New Artifact</DialogTitle>
+                        <DialogDescription>
+                          Create a reusable knowledge block for your project
+                        </DialogDescription>
+                      </DialogHeader>
+                      <Textarea
+                        value={newContent}
+                        onChange={(e) => setNewContent(e.target.value)}
+                        placeholder="Paste or type your artifact content here..."
+                        rows={12}
+                        className="resize-none"
+                      />
+                      <div className="flex gap-2 justify-end">
+                        <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                          Cancel
+                        </Button>
+                        <Button onClick={handleAddArtifact}>Create Artifact</Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
               </div>
 
               <div className="relative">
@@ -136,7 +171,7 @@ export default function Artifacts() {
                     </p>
                   </CardContent>
                 </Card>
-              ) : (
+              ) : viewMode === "cards" ? (
                 <div className="space-y-4">
                   {filteredArtifacts.map((artifact) => (
                     <Card key={artifact.id}>
@@ -164,7 +199,7 @@ export default function Artifacts() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => setEditingArtifact(artifact)}
+                              onClick={() => handleEditClick(artifact)}
                             >
                               <Edit2 className="h-4 w-4" />
                             </Button>
@@ -186,6 +221,65 @@ export default function Artifacts() {
                     </Card>
                   ))}
                 </div>
+              ) : (
+                <Card>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[300px]">Name</TableHead>
+                        <TableHead>Preview</TableHead>
+                        <TableHead className="w-[150px]">Created</TableHead>
+                        <TableHead className="w-[120px] text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredArtifacts.map((artifact) => (
+                        <TableRow key={artifact.id}>
+                          <TableCell className="font-medium">
+                            {artifact.ai_title || "Untitled Artifact"}
+                          </TableCell>
+                          <TableCell className="max-w-md">
+                            <p className="text-sm text-muted-foreground truncate">
+                              {artifact.content.slice(0, 150)}
+                              {artifact.content.length > 150 ? "..." : ""}
+                            </p>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {format(new Date(artifact.created_at), "MMM d, yyyy")}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex gap-1 justify-end">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => handleSummarize(artifact)}
+                              >
+                                <Sparkles className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => handleEditClick(artifact)}
+                              >
+                                <Edit2 className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => deleteArtifact(artifact.id)}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </Card>
               )}
             </div>
           </div>
@@ -193,21 +287,42 @@ export default function Artifacts() {
       </div>
 
       {editingArtifact && (
-        <Dialog open={!!editingArtifact} onOpenChange={() => setEditingArtifact(null)}>
+        <Dialog open={!!editingArtifact} onOpenChange={() => {
+          setEditingArtifact(null);
+          setEditingTitle("");
+        }}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>Edit Artifact</DialogTitle>
             </DialogHeader>
-            <Textarea
-              value={editingArtifact.content}
-              onChange={(e) =>
-                setEditingArtifact({ ...editingArtifact, content: e.target.value })
-              }
-              rows={12}
-              className="resize-none"
-            />
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="artifact-title">Title</Label>
+                <Input
+                  id="artifact-title"
+                  value={editingTitle}
+                  onChange={(e) => setEditingTitle(e.target.value)}
+                  placeholder="Artifact title..."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="artifact-content">Content</Label>
+                <Textarea
+                  id="artifact-content"
+                  value={editingArtifact.content}
+                  onChange={(e) =>
+                    setEditingArtifact({ ...editingArtifact, content: e.target.value })
+                  }
+                  rows={12}
+                  className="resize-none"
+                />
+              </div>
+            </div>
             <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setEditingArtifact(null)}>
+              <Button variant="outline" onClick={() => {
+                setEditingArtifact(null);
+                setEditingTitle("");
+              }}>
                 Cancel
               </Button>
               <Button onClick={handleUpdateArtifact}>Save Changes</Button>
