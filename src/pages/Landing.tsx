@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { PronghornLogo } from "@/components/layout/PronghornLogo";
 import { useNavigate } from "react-router-dom";
 import { FileText, ListChecks, GitBranch, Shield, Zap, Users, ArrowRight, CheckCircle2 } from "lucide-react";
+import pronghornHeroPoster from "@/assets/pronghorn-hero.png";
 export default function Landing() {
   const navigate = useNavigate();
   const features = [{
@@ -72,7 +73,7 @@ export default function Landing() {
           {/* Right Column - Video */}
           <div className="order-1 md:order-2">
             <div className="relative rounded-lg overflow-hidden shadow-2xl border border-border">
-              <video autoPlay loop muted playsInline className="w-full h-auto">
+              <video autoPlay loop muted playsInline poster={pronghornHeroPoster} className="w-full h-auto">
                 <source src="/pronghorn-hero.mp4" type="video/mp4" />
                 Your browser does not support the video tag.
               </video>
