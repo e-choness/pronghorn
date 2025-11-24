@@ -43,6 +43,7 @@ export default function Specifications() {
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
   const [projectSettings, setProjectSettings] = useState<any>(null);
+  const [selectedContent, setSelectedContent] = useState<ProjectSelectionResult | null>(null);
 
   // Load saved specification, project name, and settings
   useEffect(() => {
@@ -98,48 +99,70 @@ export default function Specifications() {
     );
   }
 
-  const handleProjectSelection = async (selection: ProjectSelectionResult) => {
-    if (!projectId || !projectSettings) return;
+  const handleProjectSelection = (selection: ProjectSelectionResult) => {
+    setSelectedContent(selection);
+    toast.success(`Selected ${getTotalSelectedCount(selection)} items`);
+  };
+
+  const getTotalSelectedCount = (selection: ProjectSelectionResult) => {
+    return (
+      (selection.projectMetadata ? 1 : 0) +
+      selection.artifacts.length +
+      selection.chatSessions.length +
+      selection.requirements.length +
+      selection.standards.length +
+      selection.techStacks.length +
+      selection.canvasNodes.length +
+      selection.canvasEdges.length +
+      selection.canvasLayers.length
+    );
+  };
+
+  const generateSpecification = async () => {
+    if (!projectId || !projectSettings || !selectedContent) {
+      toast.error("Please select project content first");
+      return;
+    }
 
     setIsGenerating(true);
     try {
-      // Build context from selection
+      // Build context from selectedContent
       const contextParts = [];
       
-      if (selection.projectMetadata) {
-        contextParts.push(`# Project Metadata\n${JSON.stringify(selection.projectMetadata, null, 2)}`);
+      if (selectedContent.projectMetadata) {
+        contextParts.push(`# Project Metadata\n${JSON.stringify(selectedContent.projectMetadata, null, 2)}`);
       }
       
-      if (selection.requirements.length > 0) {
-        contextParts.push(`# Requirements\n${JSON.stringify(selection.requirements, null, 2)}`);
+      if (selectedContent.requirements.length > 0) {
+        contextParts.push(`# Requirements\n${JSON.stringify(selectedContent.requirements, null, 2)}`);
       }
       
-      if (selection.artifacts.length > 0) {
-        contextParts.push(`# Artifacts\n${JSON.stringify(selection.artifacts, null, 2)}`);
+      if (selectedContent.artifacts.length > 0) {
+        contextParts.push(`# Artifacts\n${JSON.stringify(selectedContent.artifacts, null, 2)}`);
       }
       
-      if (selection.chatSessions.length > 0) {
-        contextParts.push(`# Chat Sessions\n${JSON.stringify(selection.chatSessions, null, 2)}`);
+      if (selectedContent.chatSessions.length > 0) {
+        contextParts.push(`# Chat Sessions\n${JSON.stringify(selectedContent.chatSessions, null, 2)}`);
       }
       
-      if (selection.standards.length > 0) {
-        contextParts.push(`# Standards\n${JSON.stringify(selection.standards, null, 2)}`);
+      if (selectedContent.standards.length > 0) {
+        contextParts.push(`# Standards\n${JSON.stringify(selectedContent.standards, null, 2)}`);
       }
       
-      if (selection.techStacks.length > 0) {
-        contextParts.push(`# Tech Stacks\n${JSON.stringify(selection.techStacks, null, 2)}`);
+      if (selectedContent.techStacks.length > 0) {
+        contextParts.push(`# Tech Stacks\n${JSON.stringify(selectedContent.techStacks, null, 2)}`);
       }
       
-      if (selection.canvasNodes.length > 0) {
-        contextParts.push(`# Canvas Nodes\n${JSON.stringify(selection.canvasNodes, null, 2)}`);
+      if (selectedContent.canvasNodes.length > 0) {
+        contextParts.push(`# Canvas Nodes\n${JSON.stringify(selectedContent.canvasNodes, null, 2)}`);
       }
       
-      if (selection.canvasEdges.length > 0) {
-        contextParts.push(`# Canvas Edges\n${JSON.stringify(selection.canvasEdges, null, 2)}`);
+      if (selectedContent.canvasEdges.length > 0) {
+        contextParts.push(`# Canvas Edges\n${JSON.stringify(selectedContent.canvasEdges, null, 2)}`);
       }
       
-      if (selection.canvasLayers.length > 0) {
-        contextParts.push(`# Canvas Layers\n${JSON.stringify(selection.canvasLayers, null, 2)}`);
+      if (selectedContent.canvasLayers.length > 0) {
+        contextParts.push(`# Canvas Layers\n${JSON.stringify(selectedContent.canvasLayers, null, 2)}`);
       }
 
       const userPrompt = `Please generate a comprehensive technical specification document based on the following project data:\n\n${contextParts.join('\n\n')}`;
@@ -217,14 +240,14 @@ export default function Specifications() {
         p_project_id: projectId,
         p_token: shareToken || null,
         p_generated_spec: accumulated,
-        p_raw_data: selection as any
+        p_raw_data: selectedContent as any
       });
 
       if (saveError) {
         console.error('Error saving specification:', saveError);
         toast.error('Specification generated but failed to save');
       } else {
-        setRawData(selection);
+        setRawData(selectedContent);
         setHasGeneratedSpec(true);
         toast.success("Specification generated and saved successfully!");
       }
@@ -518,118 +541,160 @@ export default function Specifications() {
               onMenuClick={() => setIsSidebarOpen(true)}
             />
 
-            {/* Download Options */}
-            <DownloadOptions 
-              projectId={projectId || ""}
-              projectName={projectName}
-              shareToken={shareToken}
-              hasGeneratedSpec={hasGeneratedSpec}
-            />
-
-            {!generatedSpec && !isGenerating && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>AI-Generated Documentation</CardTitle>
-                  <CardDescription>
-                    Select project content and customize the prompt to generate comprehensive documentation
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <Accordion type="single" collapsible defaultValue="prompt">
-                    <AccordionItem value="prompt">
-                      <AccordionTrigger>System Prompt</AccordionTrigger>
-                      <AccordionContent>
-                        <div className="space-y-2">
-                          <p className="text-sm text-muted-foreground">
-                            Customize how the AI generates your specification document:
-                          </p>
-                          <Textarea
-                            value={systemPrompt}
-                            onChange={(e) => setSystemPrompt(e.target.value)}
-                            rows={12}
-                            className="font-mono text-sm"
-                          />
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setSystemPrompt(DEFAULT_SYSTEM_PROMPT)}
-                          >
-                            Reset to Default
-                          </Button>
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  </Accordion>
-
-                  <div>
-                    <h3 className="font-semibold mb-2">What can be included:</h3>
-                    <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-                      <li>Project metadata and settings</li>
-                      <li>Requirements hierarchy (Epics, Features, Stories)</li>
-                      <li>Artifacts and documentation</li>
-                      <li>Chat sessions and conversations</li>
-                      <li>Architecture canvas (nodes, edges, layers)</li>
-                      <li>Technology stack components</li>
-                      <li>Standards and compliance information</li>
-                    </ul>
-                  </div>
-
+            {/* Step 1: Select Project Content */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Select Project Content</CardTitle>
+                <CardDescription>
+                  Choose which project elements to include in your specification
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Select from project metadata, requirements, artifacts, chat sessions, canvas items, standards, and tech stacks.
+                  </p>
+                  {selectedContent && (
+                    <div className="p-3 bg-muted rounded-md mb-4">
+                      <p className="text-sm font-medium">
+                        {getTotalSelectedCount(selectedContent)} items selected
+                      </p>
+                    </div>
+                  )}
                   <Button
                     onClick={() => setIsSelectorOpen(true)}
-                    disabled={isGenerating || !projectSettings}
                     size="lg"
                     className="w-full"
                   >
-                    {isGenerating ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-4 w-4 mr-2" />
-                        Generate Specification
-                      </>
-                    )}
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Select Content to Include
                   </Button>
-
-                  <div>
-                    <h3 className="font-semibold mb-2">Export Formats:</h3>
-                    <ul className="list-disc list-inside space-y-2 text-muted-foreground">
-                      <li><strong>HTML/Word:</strong> Formatted document (open in Word or convert to PDF)</li>
-                      <li><strong>JSON:</strong> AI-processed specification data</li>
-                    </ul>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {(generatedSpec || isGenerating) && (
-              <Tabs defaultValue="preview" className="w-full">
-                <div className="flex justify-between items-center mb-4">
-                  <TabsList>
-                    <TabsTrigger value="preview">Preview</TabsTrigger>
-                    <TabsTrigger value="markdown">Markdown</TabsTrigger>
-                  </TabsList>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={downloadAsHTML}
-                      disabled={!generatedSpec}
-                    >
-                      <FileText className="h-4 w-4 mr-2" />
-                      Download HTML/Word
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={downloadAsJSON}
-                      disabled={!rawData}
-                    >
-                      <FileJson className="h-4 w-4 mr-2" />
-                      Download JSON
-                    </Button>
-                  </div>
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Step 2: Download Project Content */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Download Project Content</CardTitle>
+                <CardDescription>
+                  Export raw project data in JSON format
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <DownloadOptions 
+                  projectId={projectId || ""}
+                  projectName={projectName}
+                  shareToken={shareToken}
+                  hasGeneratedSpec={hasGeneratedSpec}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Step 3: AI Summary */}
+            <Card>
+              <CardHeader>
+                <CardTitle>AI Summary</CardTitle>
+                <CardDescription>
+                  Generate an AI-powered specification document from selected content
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <Accordion type="single" collapsible>
+                  <AccordionItem value="prompt">
+                    <AccordionTrigger>System Prompt</AccordionTrigger>
+                    <AccordionContent>
+                      <div className="space-y-2">
+                        <p className="text-sm text-muted-foreground">
+                          Customize how the AI generates your specification document:
+                        </p>
+                        <Textarea
+                          value={systemPrompt}
+                          onChange={(e) => setSystemPrompt(e.target.value)}
+                          rows={12}
+                          className="font-mono text-sm"
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSystemPrompt(DEFAULT_SYSTEM_PROMPT)}
+                        >
+                          Reset to Default
+                        </Button>
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
+
+                <Button
+                  onClick={generateSpecification}
+                  disabled={isGenerating || !projectSettings || !selectedContent}
+                  size="lg"
+                  className="w-full"
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Generate Specification
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Generated Specification Results */}
+            {(generatedSpec || isGenerating) && (
+              <Card>
+                <CardHeader>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle>Generated Specification</CardTitle>
+                      <CardDescription>
+                        AI-generated documentation ready for download
+                      </CardDescription>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={downloadAsHTML}
+                        disabled={!generatedSpec}
+                      >
+                        <FileText className="h-4 w-4 mr-2" />
+                        Word
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          const blob = new Blob([generatedSpec], { type: "text/markdown" });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = `${projectName.replace(/\s+/g, '-')}-specification.md`;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          URL.revokeObjectURL(url);
+                          toast.success("Markdown downloaded!");
+                        }}
+                        disabled={!generatedSpec}
+                      >
+                        <FileJson className="h-4 w-4 mr-2" />
+                        Markdown
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <Tabs defaultValue="preview" className="w-full">
+                    <TabsList>
+                      <TabsTrigger value="preview">Preview</TabsTrigger>
+                      <TabsTrigger value="markdown">Source</TabsTrigger>
+                    </TabsList>
 
                 <TabsContent value="preview">
                   <Card>
@@ -666,7 +731,9 @@ export default function Specifications() {
                     </CardContent>
                   </Card>
                 </TabsContent>
-              </Tabs>
+                  </Tabs>
+                </CardContent>
+              </Card>
             )}
           </div>
         </main>
