@@ -24,7 +24,7 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { Button } from "@/components/ui/button";
-import { ZoomIn, ZoomOut, Maximize, Camera, Lasso as LassoIcon, Image, ChevronRight, Wrench, Sparkles, FileSearch, AlignLeft, AlignVerticalJustifyStart, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize, Camera, Lasso as LassoIcon, Image, ChevronRight, Wrench, Sparkles, FileSearch, AlignLeft, AlignVerticalJustifyStart, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Grid3x3 } from "lucide-react";
 import { AIArchitectDialog } from "@/components/canvas/AIArchitectDialog";
 import { useToast } from "@/hooks/use-toast";
 import { toPng, toSvg } from "html-to-image";
@@ -804,6 +804,79 @@ function CanvasFlow() {
     });
   }, [selectedNodesList, setNodes, saveNode, toast]);
 
+  const handleAutoOrder = useCallback(() => {
+    // Configuration
+    const HORIZONTAL_SPACING = 250; // Space between type columns
+    const VERTICAL_SPACING = 125;   // Space between nodes vertically
+    const START_X = 50;             // Left margin
+    const START_Y = 50;             // Top margin
+    
+    // Type order (left to right)
+    const typeOrder: NodeType[] = [
+      "PROJECT", "REQUIREMENT", "STANDARD", "TECH_STACK", 
+      "PAGE", "COMPONENT", "FIREWALL", "SECURITY", 
+      "API", "WEBHOOK", "SERVICE", "DATABASE"
+    ];
+    
+    // Determine which nodes to order
+    const nodesToOrder = selectedNodesList.length > 1 
+      ? selectedNodesList 
+      : visibleNodes;
+    
+    if (nodesToOrder.length === 0) return;
+    
+    // Group nodes by type
+    const nodesByType = new Map<NodeType, Node[]>();
+    typeOrder.forEach(type => nodesByType.set(type, []));
+    
+    nodesToOrder.forEach(node => {
+      const type = node.data?.type as NodeType;
+      if (type && nodesByType.has(type)) {
+        nodesByType.get(type)!.push(node);
+      }
+    });
+    
+    // Calculate positions
+    const updates: Node[] = [];
+    let currentX = START_X;
+    
+    typeOrder.forEach(type => {
+      const nodesOfType = nodesByType.get(type) || [];
+      if (nodesOfType.length === 0) return;
+      
+      // Position nodes of this type vertically
+      let currentY = START_Y;
+      nodesOfType.forEach(node => {
+        updates.push({
+          ...node,
+          position: { x: currentX, y: currentY }
+        });
+        currentY += VERTICAL_SPACING;
+      });
+      
+      // Move to next column
+      currentX += HORIZONTAL_SPACING;
+    });
+    
+    // Apply updates
+    setNodes((nds) =>
+      nds.map((node) => {
+        const update = updates.find((u) => u.id === node.id);
+        return update || node;
+      })
+    );
+    
+    // Save all updated nodes
+    updates.forEach(node => {
+      saveNode(node, true, false);
+    });
+    
+    toast({
+      title: "Nodes ordered",
+      description: `Auto-ordered ${updates.length} node${updates.length !== 1 ? 's' : ''} by type`,
+    });
+  }, [selectedNodesList, visibleNodes, setNodes, saveNode, toast]);
+
   return (
     <div className="h-screen bg-background flex flex-col overflow-hidden">
       <PrimaryNav />
@@ -883,6 +956,10 @@ function CanvasFlow() {
                       >
                         <AlignVerticalDistributeCenter className="h-4 w-4 mr-2" />
                         Distribute Vertically
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleAutoOrder}>
+                        <Grid3x3 className="h-4 w-4 mr-2" />
+                        Auto Order
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -1012,6 +1089,21 @@ function CanvasFlow() {
                       </TooltipTrigger>
                       <TooltipContent side="bottom">
                         <p>Distribute Vertically</p>
+                      </TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          onClick={handleAutoOrder}
+                          size="sm"
+                          variant="outline"
+                          className="bg-card/80"
+                        >
+                          <Grid3x3 className="w-3 h-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        <p>Auto Order</p>
                       </TooltipContent>
                     </Tooltip>
                   </>
