@@ -154,7 +154,15 @@ export default function Chat() {
     if (!shouldScrollToLastUserMessage) return;
 
     if (lastUserMessageRef.current) {
-      lastUserMessageRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      // Scroll the user message to the top of the viewport
+      const scrollArea = scrollViewportRef.current;
+      if (scrollArea) {
+        const viewport = scrollArea.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null;
+        if (viewport) {
+          const elementTop = lastUserMessageRef.current.offsetTop;
+          viewport.scrollTop = elementTop - 16; // 16px padding from top
+        }
+      }
       setShouldScrollToLastUserMessage(false);
     }
   }, [shouldScrollToLastUserMessage, messages.length]);
@@ -920,6 +928,9 @@ export default function Chat() {
                       </div>
                     )}
 
+                    {/* Extra space for AI responses when scrolled to user message */}
+                    <div className="min-h-[60vh]" />
+                    
                     <div ref={messagesEndRef} />
                   </div>
                 </ScrollArea>
@@ -929,7 +940,7 @@ export default function Chat() {
                   <Button
                     variant="outline"
                     size="icon"
-                    className="absolute bottom-24 right-6 rounded-full h-10 w-10 shadow-lg z-10 bg-background hover:bg-accent"
+                    className="absolute bottom-36 right-6 rounded-full h-10 w-10 shadow-lg z-10 bg-background hover:bg-accent"
                     onClick={() => {
                       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
                     }}
