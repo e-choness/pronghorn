@@ -251,8 +251,8 @@ export function InfographicDialog({ projectId, shareToken, open, onOpenChange }:
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-[90vw] max-h-[90vh] w-[90vw] h-[90vh] p-0">
-          <div className="flex flex-col md:flex-row h-full">
+      <DialogContent className="max-w-[90vw] max-h-[90vh] w-[90vw] h-[90vh] p-0 overflow-hidden">
+          <div className="flex flex-col md:flex-row h-full min-h-0 overflow-hidden">
             {/* Side Menu */}
             <div className="w-full md:w-64 border-b md:border-b-0 md:border-r bg-muted/30 flex flex-col h-full min-h-0 overflow-hidden">
               <DialogHeader className="p-6 border-b flex-shrink-0">
