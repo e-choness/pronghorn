@@ -254,7 +254,7 @@ export function InfographicDialog({ projectId, shareToken, open, onOpenChange }:
         <DialogContent className="max-w-[90vw] max-h-[90vh] w-[90vw] h-[90vh] p-0">
           <div className="flex flex-col md:flex-row h-full">
             {/* Side Menu */}
-            <div className="w-full md:w-64 border-b md:border-b-0 md:border-r bg-muted/30 flex flex-col max-h-full">
+            <div className="w-full md:w-64 border-b md:border-b-0 md:border-r bg-muted/30 flex flex-col h-full min-h-0 overflow-hidden">
               <DialogHeader className="p-6 border-b flex-shrink-0">
                 <DialogTitle>Visual Generator</DialogTitle>
                 <DialogDescription className="text-xs">
@@ -262,7 +262,7 @@ export function InfographicDialog({ projectId, shareToken, open, onOpenChange }:
                 </DialogDescription>
               </DialogHeader>
               
-              <ScrollArea className="flex-1 h-0">
+              <ScrollArea className="flex-1 overflow-y-auto">
                 <div className="p-4 space-y-6 pb-6">
                 {/* Content Selection */}
                 <div className="space-y-2">
@@ -369,7 +369,7 @@ export function InfographicDialog({ projectId, shareToken, open, onOpenChange }:
                 />
               </div>
 
-              <ScrollArea className="flex-1 h-0">
+              <ScrollArea className="flex-1 overflow-y-auto">
                 <div className="p-6">
                 {generatedImages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center space-y-4">
