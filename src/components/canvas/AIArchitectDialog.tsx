@@ -220,7 +220,7 @@ export function AIArchitectDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-w-[95vw] md:max-w-[80vw] h-[90vh] md:h-[80vh] w-full flex flex-col p-3 md:p-6">
+      <DialogContent className="max-w-[95vw] md:max-w-[90vw] h-[90vh] w-full flex flex-col p-3 md:p-6">
         <DialogHeader className="pb-2 md:pb-4">
           <DialogTitle className="text-base md:text-lg">AI Application Architect</DialogTitle>
           <DialogDescription className="text-xs md:text-sm">

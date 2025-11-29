@@ -258,24 +258,42 @@ export function IterativeEnhancement({
   };
 
   return (
-    <div className="space-y-4">
-      {/* Configuration Controls */}
-      <Card className="p-4">
+    <div className="flex-1 flex flex-col md:flex-row gap-2 md:gap-4 min-h-0 overflow-hidden">
+      {/* Left Sidebar */}
+      <div className="w-full md:w-64 flex flex-col md:border-r md:pr-4 overflow-y-auto">
         <div className="space-y-4">
-          <div className="flex items-end gap-4">
-            <div className="flex-1">
-              <Label htmlFor="iterations">Number of Iterations</Label>
-              <Input
-                id="iterations"
-                type="number"
-                min={1}
-                max={1000}
-                value={iterations}
-                onChange={(e) => setIterations(parseInt(e.target.value) || 1)}
-                disabled={isRunning}
-              />
-            </div>
+          {/* Context Options */}
+          <div className="space-y-2">
+            <h3 className="font-medium text-sm">Context Options</h3>
+            
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setShowProjectSelector(true)}
+              disabled={isRunning}
+              className="w-full justify-start text-xs"
+            >
+              <Settings2 className="h-3 w-3 mr-2" />
+              Select Project Elements
+            </Button>
+            
+            {selectedContext && (
+              <div className="text-xs text-muted-foreground space-y-1">
+                {selectedContext.projectMetadata && <p>✓ Project metadata</p>}
+                {selectedContext.artifacts?.length > 0 && <p>✓ {selectedContext.artifacts.length} artifacts</p>}
+                {selectedContext.chatSessions?.length > 0 && <p>✓ {selectedContext.chatSessions.length} chat sessions</p>}
+                {selectedContext.requirements?.length > 0 && <p>✓ {selectedContext.requirements.length} requirements</p>}
+                {selectedContext.standards?.length > 0 && <p>✓ {selectedContext.standards.length} standards</p>}
+                {selectedContext.techStacks?.length > 0 && <p>✓ {selectedContext.techStacks.length} tech stacks</p>}
+                {selectedContext.canvasNodes?.length > 0 && <p>✓ {selectedContext.canvasNodes.length} canvas nodes</p>}
+                {selectedContext.canvasEdges?.length > 0 && <p>✓ {selectedContext.canvasEdges.length} canvas edges</p>}
+                {selectedContext.canvasLayers?.length > 0 && <p>✓ {selectedContext.canvasLayers.length} canvas layers</p>}
+              </div>
+            )}
+          </div>
 
+          {/* Orchestrator Toggle */}
+          <div className="space-y-2 pt-4 border-t">
             <div className="flex items-center space-x-2">
               <input
                 type="checkbox"
@@ -285,104 +303,113 @@ export function IterativeEnhancement({
                 disabled={isRunning}
                 className="w-4 h-4"
               />
-              <Label htmlFor="orchestrator" className="text-sm">
+              <Label htmlFor="orchestrator" className="text-sm cursor-pointer">
                 Enable Orchestrator
               </Label>
             </div>
+          </div>
 
-            <Button
-              variant="outline"
-              onClick={() => setShowProjectSelector(true)}
+          {/* Iterations */}
+          <div className="space-y-2 pt-4 border-t">
+            <Label htmlFor="iterations" className="text-sm">Number of Iterations</Label>
+            <Input
+              id="iterations"
+              type="number"
+              min={1}
+              max={1000}
+              value={iterations}
+              onChange={(e) => setIterations(parseInt(e.target.value) || 1)}
               disabled={isRunning}
-            >
-              <Settings2 className="w-4 h-4 mr-2" />
-              Select Context
-              {selectedContext && (
-                <span className="ml-2 text-xs text-muted-foreground">
-                  (Selected)
-                </span>
-              )}
-            </Button>
+              className="text-sm"
+            />
+          </div>
 
+          {/* Start/Stop Button */}
+          <div className="pt-4 border-t">
             {!isRunning ? (
-              <Button onClick={startIteration}>
+              <Button onClick={startIteration} className="w-full" size="sm">
                 <Play className="w-4 h-4 mr-2" />
                 Start Iteration
               </Button>
             ) : (
-              <Button variant="destructive" onClick={stopIteration}>
+              <Button variant="destructive" onClick={stopIteration} className="w-full" size="sm">
                 <Square className="w-4 h-4 mr-2" />
                 Stop
               </Button>
             )}
           </div>
         </div>
-      </Card>
-
-      {/* Agent Flow Canvas */}
-      <Card className="p-4">
-        <h3 className="font-semibold mb-4">Agent Flow Design</h3>
-        <div className="h-[400px]">
-          <AgentFlow onFlowChange={handleFlowChange} />
-        </div>
-      </Card>
-
-      {/* Visualization and Change Log */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          {/* Visualization mode toggle */}
-          <div className="flex justify-end gap-2 mb-2">
-            <Button
-              size="sm"
-              variant={visualizationMode === 'chart' ? 'default' : 'outline'}
-              onClick={() => setVisualizationMode('chart')}
-            >
-              <BarChart3 className="w-4 h-4 mr-2" />
-              Chart
-            </Button>
-            <Button
-              size="sm"
-              variant={visualizationMode === 'heatmap' ? 'default' : 'outline'}
-              onClick={() => setVisualizationMode('heatmap')}
-            >
-              <Grid3x3 className="w-4 h-4 mr-2" />
-              Heatmap
-            </Button>
-          </div>
-          
-          {visualizationMode === 'chart' ? (
-            <IterationVisualizer
-              metrics={metrics}
-              currentIteration={currentIteration}
-              totalIterations={iterations}
-            />
-          ) : (
-            <ChangeHeatmap
-              metrics={metrics}
-              currentIteration={currentIteration}
-              totalIterations={iterations}
-            />
-          )}
-        </div>
-        <ChangeLogViewer
-          logs={changeLogs}
-          onSaveAsArtifact={handleSaveAsArtifact}
-        />
       </div>
 
-      {/* Blackboard Memory Display */}
-      {orchestratorEnabled && blackboard.length > 0 && (
-        <Card className="p-4">
-          <h3 className="font-semibold mb-2">Orchestrator Blackboard (Shared Memory)</h3>
-          <div className="space-y-2 max-h-60 overflow-y-auto">
-            {blackboard.map((entry, index) => (
-              <div key={index} className="p-2 bg-muted rounded text-sm">
-                {entry}
-              </div>
-            ))}
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col gap-4 overflow-y-auto min-h-0">
+        {/* Agent Flow Canvas */}
+        <Card className="flex-shrink-0">
+          <div className="p-4">
+            <h3 className="font-semibold mb-4 text-sm">Agent Flow Design</h3>
+            <div className="h-[500px] border rounded-lg overflow-hidden">
+              <AgentFlow onFlowChange={handleFlowChange} />
+            </div>
           </div>
         </Card>
-      )}
+
+        {/* Visualization and Change Log */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            {/* Visualization mode toggle */}
+            <div className="flex justify-end gap-2 mb-2">
+              <Button
+                size="sm"
+                variant={visualizationMode === 'chart' ? 'default' : 'outline'}
+                onClick={() => setVisualizationMode('chart')}
+              >
+                <BarChart3 className="w-4 h-4 mr-2" />
+                Chart
+              </Button>
+              <Button
+                size="sm"
+                variant={visualizationMode === 'heatmap' ? 'default' : 'outline'}
+                onClick={() => setVisualizationMode('heatmap')}
+              >
+                <Grid3x3 className="w-4 h-4 mr-2" />
+                Heatmap
+              </Button>
+            </div>
+            
+            {visualizationMode === 'chart' ? (
+              <IterationVisualizer
+                metrics={metrics}
+                currentIteration={currentIteration}
+                totalIterations={iterations}
+              />
+            ) : (
+              <ChangeHeatmap
+                metrics={metrics}
+                currentIteration={currentIteration}
+                totalIterations={iterations}
+              />
+            )}
+          </div>
+          <ChangeLogViewer
+            logs={changeLogs}
+            onSaveAsArtifact={handleSaveAsArtifact}
+          />
+        </div>
+
+        {/* Blackboard Memory Display */}
+        {orchestratorEnabled && blackboard.length > 0 && (
+          <Card className="p-4">
+            <h3 className="font-semibold mb-2 text-sm">Orchestrator Blackboard (Shared Memory)</h3>
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {blackboard.map((entry, index) => (
+                <div key={index} className="p-2 bg-muted rounded text-sm">
+                  {entry}
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+      </div>
 
       {/* Project Selector Modal */}
       <ProjectSelector
