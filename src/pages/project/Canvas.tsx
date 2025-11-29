@@ -903,7 +903,7 @@ function CanvasFlow() {
           />
           
           <div
-            className={`flex-1 relative ${isAIArchitectOpen ? "opacity-0 pointer-events-none" : ""}`}
+            className="flex-1 relative"
             ref={reactFlowWrapper}
           >
             <TooltipProvider>
@@ -929,304 +929,313 @@ function CanvasFlow() {
                 onOpenChange={setIsInfographicOpen}
               />
               
-              <div className="absolute top-4 left-4 z-10 flex gap-2">
-                {isMobile ? (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button size="icon" variant="outline" className="bg-card/80">
-                        <Wrench className="w-4 h-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="bg-popover z-50">
-                      <DropdownMenuItem onClick={() => setIsAIArchitectOpen(true)}>
-                        <Sparkles className="h-4 w-4 mr-2" />
-                        AI Architect
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setIsLassoActive(!isLassoActive)}>
-                        <LassoIcon className="h-4 w-4 mr-2" />
-                        {isLassoActive ? "Disable" : "Enable"} Lasso Select
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleDownloadSnapshot('png')}>
-                        <Image className="h-4 w-4 mr-2" />
-                        Export PNG
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleDownloadSnapshot('svg')}>
-                        <FileSearch className="h-4 w-4 mr-2" />
-                        Export SVG
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setIsInfographicOpen(true)}>
-                        <ImagePlus className="h-4 w-4 mr-2" />
-                        Generate Infographic
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleAlignLeft} disabled={selectedNodesList.length <= 1}>
-                        <AlignLeft className="h-4 w-4 mr-2" />
-                        Align Left
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleAlignTop} disabled={selectedNodesList.length <= 1}>
-                        <AlignVerticalJustifyStart className="h-4 w-4 mr-2" />
-                        Align Top
-                      </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        onClick={handleDistributeHorizontally}
-                        disabled={selectedNodesList.length <= 2}
-                      >
-                        <AlignHorizontalDistributeCenter className="h-4 w-4 mr-2" />
-                        Distribute Horizontally
-                      </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        onClick={handleDistributeVertically}
-                        disabled={selectedNodesList.length <= 2}
-                      >
-                        <AlignVerticalDistributeCenter className="h-4 w-4 mr-2" />
-                        Distribute Vertically
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={handleAutoOrder}>
-                        <Grid3x3 className="h-4 w-4 mr-2" />
-                        Auto Order
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                ) : (
-                  <>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          onClick={() => setIsAIArchitectOpen(true)}
-                          variant="outline"
-                          className="bg-card/80"
-                          size="icon"
-                        >
-                          <Sparkles className="w-4 h-4" />
+              {/* Top-left canvas tools (AI Architect, Lasso, Export, etc.) */}
+              {!isAIArchitectOpen && (
+                <div className="absolute top-4 left-4 z-10 flex gap-2">
+                  {isMobile ? (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="icon" variant="outline" className="bg-card/80">
+                          <Wrench className="w-4 h-4" />
                         </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        <p>AI Architect</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          onClick={() => setIsLassoActive(!isLassoActive)}
-                          variant={isLassoActive ? "default" : "outline"}
-                          className={isLassoActive ? "" : "bg-card/80"}
-                          size="icon"
-                        >
-                          <LassoIcon className="w-4 h-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        <p>Lasso Select</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          onClick={() => handleDownloadSnapshot('png')}
-                          size="sm"
-                          variant="outline"
-                          className="bg-card/80"
-                        >
-                          <Image className="w-3 h-3" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        <p>Export PNG</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          onClick={() => handleDownloadSnapshot('svg')}
-                          size="sm"
-                          variant="outline"
-                          className="bg-card/80"
-                        >
-                          <Camera className="w-3 h-3" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        <p>Export SVG</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          onClick={() => setIsInfographicOpen(true)}
-                          size="sm"
-                          variant="outline"
-                          className="bg-card/80"
-                        >
-                          <ImagePlus className="w-3 h-3" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        <p>Generate Infographic</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    
-                    {/* Alignment buttons */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          onClick={handleAlignLeft}
-                          size="sm"
-                          variant="outline"
-                          className="bg-card/80"
-                          disabled={selectedNodesList.length <= 1}
-                        >
-                          <AlignLeft className="w-3 h-3" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        <p>Align Left</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          onClick={handleAlignTop}
-                          size="sm"
-                          variant="outline"
-                          className="bg-card/80"
-                          disabled={selectedNodesList.length <= 1}
-                        >
-                          <AlignVerticalJustifyStart className="w-3 h-3" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        <p>Align Top</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="bg-popover z-50">
+                        <DropdownMenuItem onClick={() => setIsAIArchitectOpen(true)}>
+                          <Sparkles className="h-4 w-4 mr-2" />
+                          AI Architect
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setIsLassoActive(!isLassoActive)}>
+                          <LassoIcon className="h-4 w-4 mr-2" />
+                          {isLassoActive ? "Disable" : "Enable"} Lasso Select
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleDownloadSnapshot('png')}>
+                          <Image className="h-4 w-4 mr-2" />
+                          Export PNG
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleDownloadSnapshot('svg')}>
+                          <FileSearch className="h-4 w-4 mr-2" />
+                          Export SVG
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setIsInfographicOpen(true)}>
+                          <ImagePlus className="h-4 w-4 mr-2" />
+                          Generate Infographic
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleAlignLeft} disabled={selectedNodesList.length <= 1}>
+                          <AlignLeft className="h-4 w-4 mr-2" />
+                          Align Left
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleAlignTop} disabled={selectedNodesList.length <= 1}>
+                          <AlignVerticalJustifyStart className="h-4 w-4 mr-2" />
+                          Align Top
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
                           onClick={handleDistributeHorizontally}
-                          size="sm"
-                          variant="outline"
-                          className="bg-card/80"
                           disabled={selectedNodesList.length <= 2}
                         >
-                          <AlignHorizontalDistributeCenter className="w-3 h-3" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        <p>Distribute Horizontally</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
+                          <AlignHorizontalDistributeCenter className="h-4 w-4 mr-2" />
+                          Distribute Horizontally
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
                           onClick={handleDistributeVertically}
-                          size="sm"
-                          variant="outline"
-                          className="bg-card/80"
                           disabled={selectedNodesList.length <= 2}
                         >
-                          <AlignVerticalDistributeCenter className="w-3 h-3" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        <p>Distribute Vertically</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          onClick={handleAutoOrder}
-                          size="sm"
-                          variant="outline"
-                          className="bg-card/80"
-                        >
-                          <Grid3x3 className="w-3 h-3" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        <p>Auto Order</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </>
-                )}
-              </div>
+                          <AlignVerticalDistributeCenter className="h-4 w-4 mr-2" />
+                          Distribute Vertically
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleAutoOrder}>
+                          <Grid3x3 className="h-4 w-4 mr-2" />
+                          Auto Order
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : (
+                    <>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            onClick={() => setIsAIArchitectOpen(true)}
+                            variant="outline"
+                            className="bg-card/80"
+                            size="icon"
+                          >
+                            <Sparkles className="w-4 h-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p>AI Architect</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            onClick={() => setIsLassoActive(!isLassoActive)}
+                            variant={isLassoActive ? "default" : "outline"}
+                            className={isLassoActive ? "" : "bg-card/80"}
+                            size="icon"
+                          >
+                            <LassoIcon className="w-4 h-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p>Lasso Select</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            onClick={() => handleDownloadSnapshot('png')}
+                            size="sm"
+                            variant="outline"
+                            className="bg-card/80"
+                          >
+                            <Image className="w-3 h-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p>Export PNG</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            onClick={() => handleDownloadSnapshot('svg')}
+                            size="sm"
+                            variant="outline"
+                            className="bg-card/80"
+                          >
+                            <Camera className="w-3 h-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p>Export SVG</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            onClick={() => setIsInfographicOpen(true)}
+                            size="sm"
+                            variant="outline"
+                            className="bg-card/80"
+                          >
+                            <ImagePlus className="w-3 h-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p>Generate Infographic</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      {/* Alignment buttons */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            onClick={handleAlignLeft}
+                            size="sm"
+                            variant="outline"
+                            className="bg-card/80"
+                            disabled={selectedNodesList.length <= 1}
+                          >
+                            <AlignLeft className="w-3 h-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p>Align Left</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            onClick={handleAlignTop}
+                            size="sm"
+                            variant="outline"
+                            className="bg-card/80"
+                            disabled={selectedNodesList.length <= 1}
+                          >
+                            <AlignVerticalJustifyStart className="w-3 h-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p>Align Top</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            onClick={handleDistributeHorizontally}
+                            size="sm"
+                            variant="outline"
+                            className="bg-card/80"
+                            disabled={selectedNodesList.length <= 2}
+                          >
+                            <AlignHorizontalDistributeCenter className="w-3 h-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p>Distribute Horizontally</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            onClick={handleDistributeVertically}
+                            size="sm"
+                            variant="outline"
+                            className="bg-card/80"
+                            disabled={selectedNodesList.length <= 2}
+                          >
+                            <AlignVerticalDistributeCenter className="w-3 h-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p>Distribute Vertically</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            onClick={handleAutoOrder}
+                            size="sm"
+                            variant="outline"
+                            className="bg-card/80"
+                          >
+                            <Grid3x3 className="w-3 h-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p>Auto Order</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </>
+                  )}
+                </div>
+              )}
             </TooltipProvider>
-            <ReactFlow
-              nodes={visibleNodes}
-              edges={visibleEdges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              onNodeClick={onNodeClick}
-              onEdgeClick={onEdgeClick}
-              onNodeDrag={onNodeDrag}
-              onNodeDragStop={onNodeDragStop}
-              onInit={setReactFlowInstance}
-              onDrop={onDrop}
-              onDragOver={onDragOver}
-              nodeTypes={nodeTypes}
-              deleteKeyCode={null}
-              minZoom={0.05}
-              maxZoom={4}
-              className="bg-background"
-              defaultEdgeOptions={{
-                style: { strokeWidth: 2 },
-              }}
-              selectionOnDrag={!isLassoActive}
-              panOnDrag={!isLassoActive}
-              multiSelectionKeyCode="Shift"
-              onPaneClick={() => {
-                setSelectedNode(null);
-                setSelectedEdge(null);
-                setIsPanelOpen(false); // Collapse panel when clicking empty canvas
-              }}
-            >
-              <Background />
-              <Controls />
-              <MiniMap
-                nodeColor={(node) => {
-                  const colors: Record<string, string> = {
-                    COMPONENT: "#3b82f6",
-                    API: "#10b981",
-                    DATABASE: "#a855f7",
-                    SERVICE: "#f97316",
-                  };
-                  return colors[node.data.type] || "#6b7280";
-                }}
-                className="bg-card border border-border"
-              />
-               {isLassoActive && <Lasso partial={true} setNodes={setNodes} />}
-              </ReactFlow>
-           </div>
 
-          {selectedNode ? (
-            <NodePropertiesPanel
-              node={selectedNode}
-              onClose={handleClosePanel}
-              onUpdate={handleNodeUpdate}
-              onDelete={handleNodeDelete}
-              projectId={projectId!}
-              isOpen={isPanelOpen}
-              onToggle={handleTogglePanel}
-            />
-          ) : selectedEdge ? (
-            <EdgePropertiesPanel
-              edge={selectedEdge}
-              onClose={handleClosePanel}
-              onUpdate={handleEdgeUpdate}
-              onVisualUpdate={handleEdgeVisualUpdate}
-              onDelete={handleEdgeDelete}
-              isOpen={isPanelOpen}
-              onToggle={handleTogglePanel}
-            />
-          ) : (
-            <div className="w-12 border-l border-border bg-card flex flex-col items-center py-4 h-full z-50">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setIsPanelOpen(!isPanelOpen)}
-                className="h-8 w-8"
+            {/* Main project canvas is fully unmounted while AI Architect is open to avoid flicker */}
+            {!isAIArchitectOpen && (
+              <ReactFlow
+                nodes={visibleNodes}
+                edges={visibleEdges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
+                onNodeClick={onNodeClick}
+                onEdgeClick={onEdgeClick}
+                onNodeDrag={onNodeDrag}
+                onNodeDragStop={onNodeDragStop}
+                onInit={setReactFlowInstance}
+                onDrop={onDrop}
+                onDragOver={onDragOver}
+                nodeTypes={nodeTypes}
+                deleteKeyCode={null}
+                minZoom={0.05}
+                maxZoom={4}
+                className="bg-background"
+                defaultEdgeOptions={{
+                  style: { strokeWidth: 2 },
+                }}
+                selectionOnDrag={!isLassoActive}
+                panOnDrag={!isLassoActive}
+                multiSelectionKeyCode="Shift"
+                onPaneClick={() => {
+                  setSelectedNode(null);
+                  setSelectedEdge(null);
+                  setIsPanelOpen(false); // Collapse panel when clicking empty canvas
+                }}
               >
-                <ChevronRight className="h-4 w-4 rotate-180" />
-              </Button>
-            </div>
+                <Background />
+                <Controls />
+                <MiniMap
+                  nodeColor={(node) => {
+                    const colors: Record<string, string> = {
+                      COMPONENT: "#3b82f6",
+                      API: "#10b981",
+                      DATABASE: "#a855f7",
+                      SERVICE: "#f97316",
+                    };
+                    return colors[node.data.type] || "#6b7280";
+                  }}
+                  className="bg-card border border-border"
+                />
+                {isLassoActive && <Lasso partial={true} setNodes={setNodes} />}
+              </ReactFlow>
+            )}
+          </div>
+
+          {/* Properties panel is also hidden while AI Architect is open */}
+          {!isAIArchitectOpen && (
+            selectedNode ? (
+              <NodePropertiesPanel
+                node={selectedNode}
+                onClose={handleClosePanel}
+                onUpdate={handleNodeUpdate}
+                onDelete={handleNodeDelete}
+                projectId={projectId!}
+                isOpen={isPanelOpen}
+                onToggle={handleTogglePanel}
+              />
+            ) : selectedEdge ? (
+              <EdgePropertiesPanel
+                edge={selectedEdge}
+                onClose={handleClosePanel}
+                onUpdate={handleEdgeUpdate}
+                onVisualUpdate={handleEdgeVisualUpdate}
+                onDelete={handleEdgeDelete}
+                isOpen={isPanelOpen}
+                onToggle={handleTogglePanel}
+              />
+            ) : (
+              <div className="w-12 border-l border-border bg-card flex flex-col items-center py-4 h-full z-50">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setIsPanelOpen(!isPanelOpen)}
+                  className="h-8 w-8"
+                >
+                  <ChevronRight className="h-4 w-4 rotate-180" />
+                </Button>
+              </div>
+            )
           )}
         </div>
       </div>
