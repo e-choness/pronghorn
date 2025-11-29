@@ -82,6 +82,7 @@ function CanvasFlow() {
     onEdgesChange,
     saveNode,
     saveEdge,
+    loadCanvasData,
   } = useRealtimeCanvas(projectId!, initialNodes, initialEdges);
 
   // Filter nodes and edges based on visibility
@@ -909,7 +910,13 @@ function CanvasFlow() {
                 existingEdges={edges}
                 onArchitectureGenerated={handleArchitectureGenerated}
                 open={isAIArchitectOpen}
-                onOpenChange={setIsAIArchitectOpen}
+                onOpenChange={(open) => {
+                  setIsAIArchitectOpen(open);
+                  if (!open) {
+                    // Refresh canvas when dialog closes
+                    loadCanvasData();
+                  }
+                }}
               />
               
               <InfographicDialog
