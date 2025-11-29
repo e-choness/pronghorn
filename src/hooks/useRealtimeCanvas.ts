@@ -313,5 +313,6 @@ export function useRealtimeCanvas(projectId: string, initialNodes: Node[], initi
     onEdgesChange,
     saveNode,
     saveEdge,
+    loadCanvasData,
   };
 }

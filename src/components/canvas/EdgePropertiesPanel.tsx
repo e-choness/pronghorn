@@ -108,6 +108,14 @@ export function EdgePropertiesPanel({
     onClose();
   };
 
+  const handleReverse = () => {
+    // Swap source and target
+    onUpdate(edge.id, {
+      source: edge.target,
+      target: edge.source,
+    });
+  };
+
   return (
     <div className="w-80 bg-card border-l border-border flex flex-col h-full z-50">
       <div className="p-4 border-b border-border flex items-center justify-between flex-shrink-0">
@@ -187,6 +195,13 @@ export function EdgePropertiesPanel({
           className="w-full"
         >
           Save Edge
+        </Button>
+        <Button
+          variant="outline"
+          onClick={handleReverse}
+          className="w-full"
+        >
+          Reverse Direction
         </Button>
         <Button
           variant="destructive"
