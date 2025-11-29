@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useShareToken } from "@/hooks/useShareToken";
 import { ProjectSelector, ProjectSelectionResult } from "@/components/project/ProjectSelector";
+import { IterativeEnhancement } from "./IterativeEnhancement";
 
 interface AIArchitectDialogProps {
   projectId: string;
@@ -228,9 +229,10 @@ export function AIArchitectDialog({
         </DialogHeader>
 
         <Tabs defaultValue="generate" className="flex-1 flex flex-col min-h-0">
-          <TabsList className="grid w-full grid-cols-2 shrink-0">
+          <TabsList className="grid w-full grid-cols-3 shrink-0">
             <TabsTrigger value="generate" className="text-xs md:text-sm">Generate</TabsTrigger>
             <TabsTrigger value="critic" className="text-xs md:text-sm">Critic</TabsTrigger>
+            <TabsTrigger value="iterative" className="text-xs md:text-sm">Iterative</TabsTrigger>
           </TabsList>
 
           <TabsContent value="generate" className="flex-1 flex flex-col md:flex-row gap-2 md:gap-4 min-h-0 data-[state=active]:flex data-[state=inactive]:hidden">
@@ -415,6 +417,16 @@ export function AIArchitectDialog({
                 </Button>
               </div>
             </div>
+          </TabsContent>
+
+          <TabsContent value="iterative" className="flex-1 flex flex-col min-h-0 data-[state=active]:flex data-[state=inactive]:hidden">
+            <IterativeEnhancement
+              projectId={projectId}
+              shareToken={shareToken}
+              existingNodes={existingNodes}
+              existingEdges={existingEdges}
+              onArchitectureGenerated={onArchitectureGenerated}
+            />
           </TabsContent>
         </Tabs>
       </DialogContent>
