@@ -341,7 +341,7 @@ export function InfographicDialog({ projectId, shareToken, open, onOpenChange }:
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[90vw] max-h-[90vh] w-[90vw] h-[90vh] p-0 overflow-hidden">
+      <DialogContent className="max-w-[90vw] max-h-[90vh] w-[90vw] h-[90vh] p-0 overflow-y-auto md:overflow-hidden">
           <div className="flex flex-col h-full min-h-0 overflow-hidden">
             {/* Mobile Menu Button */}
             <div className="md:hidden flex items-center gap-2 p-4 border-b flex-shrink-0">
