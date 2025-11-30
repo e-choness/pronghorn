@@ -148,7 +148,11 @@ export default function Standards() {
 
       // Calculate deltas for tech stacks
       const existingTechStackIds = new Set(existingTechStacks?.map(pts => pts.tech_stack_id) || []);
-      const techStacksToAdd = Array.from(selectedTechStacks).filter(id => !existingTechStackIds.has(id));
+      // Only include tech stack IDs that actually exist in the tech_stacks table
+      const validTechStackIds = new Set(techStacks.map(ts => ts.id));
+      const techStacksToAdd = Array.from(selectedTechStacks).filter(id => 
+        !existingTechStackIds.has(id) && validTechStackIds.has(id)
+      );
       const techStacksToRemove = (existingTechStacks || []).filter(pts => !selectedTechStacks.has(pts.tech_stack_id));
 
       // Delete only removed standards
