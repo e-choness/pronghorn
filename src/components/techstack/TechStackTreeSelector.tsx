@@ -25,12 +25,14 @@ interface TechStackTreeSelectorProps {
   techStacks: TechStack[];
   selectedItems: Set<string>;
   onSelectionChange: (selectedIds: Set<string>) => void;
+  allowedItemIds?: Set<string> | string[];
 }
 
 export function TechStackTreeSelector({
   techStacks: initialTechStacks,
   selectedItems,
   onSelectionChange,
+  allowedItemIds,
 }: TechStackTreeSelectorProps) {
   const [expandedTechStacks, setExpandedTechStacks] = useState<Set<string>>(new Set());
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
@@ -45,6 +47,12 @@ export function TechStackTreeSelector({
     setLoading(true);
     try {
       const stacksWithItems: TechStack[] = [];
+      const allowedIds =
+        allowedItemIds instanceof Set
+          ? allowedItemIds
+          : allowedItemIds
+          ? new Set(allowedItemIds)
+          : null;
 
       for (const stack of initialTechStacks) {
         // Load all child items for this tech stack (where parent_id = stack.id)
@@ -54,9 +62,13 @@ export function TechStackTreeSelector({
           .eq("parent_id", stack.id)
           .order("order_index");
 
+        const filteredItems = (childItems || []).filter((item) =>
+          allowedIds ? allowedIds.has(item.id) : true
+        );
+
         stacksWithItems.push({
           ...stack,
-          items: buildItemsHierarchy(childItems || []),
+          items: buildItemsHierarchy(filteredItems),
         });
       }
 
