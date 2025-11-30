@@ -78,10 +78,12 @@ export default function Standards() {
 
       setCategories(categoriesWithStandards);
 
-      // Load tech stacks
+      // Load tech stacks - only top-level categories (parent_id IS NULL and type IS NULL)
       const { data: techStacksData } = await supabase
         .from("tech_stacks")
         .select("*")
+        .is("parent_id", null)
+        .is("type", null)
         .order("name");
 
       setTechStacks(techStacksData || []);
