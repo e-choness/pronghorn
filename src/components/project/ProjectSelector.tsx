@@ -153,9 +153,10 @@ export function ProjectSelector({
     new Set(initialSelection?.canvasLayers ?? [])
   );
 
-  // Load project-linked standards
+  // Load project-linked standards & tech stacks
   const [standardCategories, setStandardCategories] = useState<any[]>([]);
   const [techStacks, setTechStacks] = useState<any[]>([]);
+  const [linkedTechStackIds, setLinkedTechStackIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (open && projectId) {
@@ -242,21 +243,19 @@ export function ProjectSelector({
 
       const linkedStackIds = projectTechStacks.map((pts: any) => pts.tech_stack_id);
 
-      // Fetch all linked tech stack items
-      const { data: linkedStacks } = await supabase
+      // Store all linked tech stack item IDs so the tree can filter to project-linked items only
+      setLinkedTechStackIds(new Set(linkedStackIds));
+
+      // Fetch only linked top-level parents (parent_id IS NULL and type IS NULL)
+      const { data: linkedParents } = await supabase
         .from("tech_stacks")
         .select("*")
         .in("id", linkedStackIds)
+        .is("parent_id", null)
+        .is("type", null)
         .order("order_index");
 
-      // Filter to show only top-level parents (parent_id IS NULL and type IS NULL)
-      // that are part of the linked items or have linked children
-      const allLinkedIds = new Set(linkedStackIds);
-      const parentStacks = (linkedStacks || []).filter(
-        (stack) => stack.parent_id === null && stack.type === null
-      );
-
-      setTechStacks(parentStacks);
+      setTechStacks(linkedParents || []);
       // Don't pre-select - user must choose which to include
     } catch (error) {
       console.error("Error loading tech stacks:", error);
@@ -519,9 +518,10 @@ export function ProjectSelector({
             techStacks={techStacks}
             selectedItems={selectedTechStacks}
             onSelectionChange={setSelectedTechStacks}
+            allowedItemIds={linkedTechStackIds}
           />
         ) : (
-          <p className="text-sm text-muted-foreground">No tech stacks available.</p>
+          <p className="text-sm text-muted-foreground">No tech stacks linked to this project.</p>
         );
 
       case "canvas":
