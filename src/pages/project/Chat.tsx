@@ -357,6 +357,7 @@ export default function Chat() {
         p_content: messageContent,
         p_source_type: "chat_message",
         p_source_id: selectedSessionId,
+        p_image_url: null,
       });
 
       if (error) throw error;
@@ -626,6 +627,7 @@ export default function Chat() {
         p_content: chatContent,
         p_source_type: "chat_session",
         p_source_id: selectedSessionId,
+        p_image_url: null,
       });
 
       if (error) throw error;
@@ -659,6 +661,7 @@ export default function Chat() {
         p_content: summaryContent,
         p_source_type: "chat_summary",
         p_source_id: selectedSessionId,
+        p_image_url: null,
       });
 
       if (error) throw error;
