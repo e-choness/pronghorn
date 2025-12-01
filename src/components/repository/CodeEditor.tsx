@@ -110,17 +110,44 @@ export function CodeEditor({
     
     setSaving(true);
     try {
-      // Stage the file change instead of directly saving to repo_files
-      const { error } = await supabase.rpc("stage_file_change_with_token", {
-        p_repo_id: repoId,
-        p_token: shareToken || null,
-        p_operation_type: fileId ? "edit" : "add",
-        p_file_path: filePath,
-        p_old_content: originalContent,
-        p_new_content: content,
-      });
+      // First, check if there's already a staged change for this file
+      const { data: existingStaged, error: checkError } = await supabase
+        .from("repo_staging")
+        .select("id")
+        .eq("repo_id", repoId)
+        .eq("file_path", filePath)
+        .maybeSingle();
 
-      if (error) throw error;
+      if (checkError && checkError.code !== "PGRST116") {
+        throw checkError;
+      }
+
+      if (existingStaged) {
+        // Update existing staged change
+        const { error: updateError } = await supabase
+          .from("repo_staging")
+          .update({
+            operation_type: fileId ? "edit" : "add",
+            old_content: originalContent,
+            new_content: content,
+            created_at: new Date().toISOString(),
+          })
+          .eq("id", existingStaged.id);
+
+        if (updateError) throw updateError;
+      } else {
+        // Stage new file change
+        const { error } = await supabase.rpc("stage_file_change_with_token", {
+          p_repo_id: repoId,
+          p_token: shareToken || null,
+          p_operation_type: fileId ? "edit" : "add",
+          p_file_path: filePath,
+          p_old_content: originalContent,
+          p_new_content: content,
+        });
+
+        if (error) throw error;
+      }
 
       toast({
         title: "Staged",
