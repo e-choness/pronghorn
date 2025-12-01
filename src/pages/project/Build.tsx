@@ -40,7 +40,49 @@ export default function Build() {
   const [stagedChanges, setStagedChanges] = useState<any[]>([]);
   const [selectedDiff, setSelectedDiff] = useState<{ old: string; new: string; path: string } | null>(null);
   const [diffEnabled, setDiffEnabled] = useState(false);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(() => {
+    // Load most recent session ID from sessionStorage on mount
+    return sessionStorage.getItem(`activeAgentSession_${projectId}`) || null;
+  });
+
+  // Persist activeSessionId to sessionStorage whenever it changes
+  useEffect(() => {
+    if (activeSessionId && projectId) {
+      sessionStorage.setItem(`activeAgentSession_${projectId}`, activeSessionId);
+    }
+  }, [activeSessionId, projectId]);
+
+  // Load most recent agent session on mount
+  useEffect(() => {
+    if (!projectId || !shareToken) return;
+
+    const loadRecentSession = async () => {
+      try {
+        const { data: sessions, error } = await supabase.rpc("get_agent_sessions_with_token", {
+          p_project_id: projectId,
+          p_token: shareToken,
+        });
+
+        if (error) throw error;
+
+        if (sessions && sessions.length > 0) {
+          // Get most recent session
+          const mostRecent = sessions.sort(
+            (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          )[0];
+          
+          // Only set if we don't already have an active session
+          if (!activeSessionId) {
+            setActiveSessionId(mostRecent.id);
+          }
+        }
+      } catch (error) {
+        console.error("Error loading recent session:", error);
+      }
+    };
+
+    loadRecentSession();
+  }, [projectId, shareToken]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Load files from default repo
@@ -65,6 +107,7 @@ export default function Build() {
           filter: `project_id=eq.${projectId}`,
         },
         () => {
+          console.log("repo_files changed, reloading...");
           loadFiles();
         },
       )
@@ -77,6 +120,7 @@ export default function Build() {
           filter: `repo_id=eq.${defaultRepo.id}`,
         },
         () => {
+          console.log("repo_staging changed, reloading...");
           loadFiles();
         },
       )
@@ -227,6 +271,9 @@ export default function Build() {
 
   const handleSubmitTask = (sessionId: string) => {
     setActiveSessionId(sessionId);
+    if (projectId) {
+      sessionStorage.setItem(`activeAgentSession_${projectId}`, sessionId);
+    }
     toast({
       title: "Task Started",
       description: "Monitor progress in the Progress tab",
@@ -396,6 +443,7 @@ export default function Build() {
                       <div className="flex-1 min-h-0 overflow-auto">
                         <AgentFileTree
                           files={files}
+                          stagedChanges={stagedChanges}
                           selectedFileId={selectedFileId}
                           onSelectFile={handleSelectFile}
                           onAttachToPrompt={handleAttachToPrompt}
@@ -469,6 +517,7 @@ export default function Build() {
                     </div>
                     <AgentFileTree
                       files={files}
+                      stagedChanges={stagedChanges}
                       selectedFileId={selectedFileId}
                       onSelectFile={handleSelectFile}
                       onAttachToPrompt={handleAttachToPrompt}
@@ -483,37 +532,65 @@ export default function Build() {
 
                 {/* Center: Code Editor or Diff Viewer */}
                 <ResizablePanel defaultSize={40} minSize={30}>
-                  <div className="h-full">
-                    {selectedDiff ? (
-                      <CodeEditor
-                        fileId={selectedFileId}
-                        filePath={selectedDiff.path}
-                        repoId={defaultRepo?.id || ""}
-                        isStaged={selectedFileIsStaged}
-                        initialContent={selectedDiff.new}
-                        showDiff={true}
-                        diffOldContent={selectedDiff.old}
-                        onClose={() => {
-                          setSelectedFileId(null);
-                          setSelectedFilePath(null);
-                          setSelectedDiff(null);
-                        }}
-                        onSave={loadFiles}
-                      />
-                    ) : (
-                      <CodeEditor
-                        fileId={selectedFileId}
-                        filePath={selectedFilePath}
-                        repoId={defaultRepo?.id || ""}
-                        isStaged={selectedFileIsStaged}
-                        onClose={() => {
-                          setSelectedFileId(null);
-                          setSelectedFilePath(null);
-                          setSelectedFileIsStaged(false);
-                        }}
-                        onSave={loadFiles}
-                      />
+                  <div className="h-full flex flex-col">
+                    {selectedFileId && (
+                      <div className="px-4 py-2 border-b bg-[#252526] flex items-center gap-4">
+                        <div className="flex items-center gap-2 text-xs text-[#cccccc]">
+                          <Checkbox
+                            id="desktop-diff-toggle"
+                            checked={diffEnabled}
+                            onCheckedChange={(checked) => {
+                              const enabled = Boolean(checked);
+                              setDiffEnabled(enabled);
+                              if (enabled) {
+                                const stagedChange = stagedChanges.find(
+                                  (c: any) => c.file_path === selectedFilePath,
+                                );
+                                if (stagedChange) {
+                                  handleViewDiff(stagedChange);
+                                }
+                              } else {
+                                setSelectedDiff(null);
+                              }
+                            }}
+                          />
+                          <label htmlFor="desktop-diff-toggle" className="cursor-pointer">
+                            Show diff
+                          </label>
+                        </div>
+                      </div>
                     )}
+                    <div className="flex-1 min-h-0 overflow-hidden">
+                      {selectedDiff ? (
+                        <CodeEditor
+                          fileId={selectedFileId}
+                          filePath={selectedDiff.path}
+                          repoId={defaultRepo?.id || ""}
+                          isStaged={selectedFileIsStaged}
+                          initialContent={selectedDiff.new}
+                          showDiff={true}
+                          diffOldContent={selectedDiff.old}
+                          onClose={() => {
+                            setSelectedFileId(null);
+                            setSelectedFilePath(null);
+                            setSelectedDiff(null);
+                            setDiffEnabled(false);
+                          }}
+                        />
+                      ) : (
+                        <CodeEditor
+                          fileId={selectedFileId}
+                          filePath={selectedFilePath}
+                          repoId={defaultRepo?.id || ""}
+                          isStaged={selectedFileIsStaged}
+                          onClose={() => {
+                            setSelectedFileId(null);
+                            setSelectedFilePath(null);
+                            setSelectedFileIsStaged(false);
+                          }}
+                        />
+                      )}
+                    </div>
                   </div>
                 </ResizablePanel>
 
