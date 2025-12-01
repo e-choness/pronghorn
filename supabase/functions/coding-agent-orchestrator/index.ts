@@ -125,7 +125,7 @@ serve(async (req) => {
     if (sessionError) throw sessionError;
     console.log("Created session:", session.id);
 
-    // Load instruction manifest (embedded to avoid external HTTP failures)
+    // Load instruction manifest
     const manifest = {
       file_operations: {
         search: { description: "Search file paths and content by keyword" },
@@ -194,7 +194,7 @@ Attached Files: ${attachedFilesContent}
 
 When responding, structure your response as:
 {
-  "reasoning": "Your chain-of-thought reasoning",
+  "reasoning": "Your chain-of-thought reasoning about what to do next",
   "operations": [
     {
       "type": "read_file" | "edit_lines" | "create_file" | "delete_file" | "rename_file" | "search",
@@ -208,262 +208,296 @@ When responding, structure your response as:
   "status": "in_progress" | "completed" | "requires_commit"
 }
 
-Execute file operations carefully and document your reasoning.`;
+CRITICAL: Work autonomously by chaining operations together. After each operation, review results and decide next steps:
+- Set status to "in_progress" when you need to continue with more operations
+- Set status to "requires_commit" when you've made changes ready to be staged
+- Set status to "completed" when the entire task is done
 
-    const userPrompt = `Task: ${taskDescription}`;
+Think step-by-step and continue until the task is complete.`;
 
-    // Call LLM based on provider
-    let llmResponse: any;
+    // Autonomous iteration loop
+    const MAX_ITERATIONS = 10;
+    let iteration = 0;
+    let conversationHistory: Array<{ role: string; content: string }> = [];
+    let finalStatus = "running";
+    let allOperationResults: any[] = [];
 
-    if (selectedModel.startsWith("gemini")) {
-      // Gemini API
-      llmResponse = await fetch(`${apiEndpoint}?key=${apiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: systemPrompt },
-                { text: userPrompt },
-              ],
+    conversationHistory.push({ role: "user", content: `Task: ${taskDescription}` });
+
+    while (iteration < MAX_ITERATIONS) {
+      iteration++;
+      console.log(`\n=== Iteration ${iteration} ===`);
+
+      // Call LLM based on provider
+      let llmResponse: any;
+
+      if (selectedModel.startsWith("gemini")) {
+        // Gemini API with system instruction
+        const contents = conversationHistory.map((msg) => ({
+          role: msg.role === "assistant" ? "model" : "user",
+          parts: [{ text: msg.content }],
+        }));
+
+        llmResponse = await fetch(`${apiEndpoint}?key=${apiKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [{ text: systemPrompt }],
             },
-          ],
-          generationConfig: {
-            maxOutputTokens: maxTokens,
-            temperature: 0.7,
+            contents,
+            generationConfig: {
+              maxOutputTokens: maxTokens,
+              temperature: 0.7,
+            },
+          }),
+        });
+      } else if (selectedModel.startsWith("claude")) {
+        // Anthropic API
+        const messages = conversationHistory.map((msg) => ({
+          role: msg.role,
+          content: msg.content,
+        }));
+
+        llmResponse = await fetch(apiEndpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
           },
-        }),
-      });
-    } else if (selectedModel.startsWith("claude")) {
-      // Anthropic API
-      llmResponse = await fetch(apiEndpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: modelName,
-          max_tokens: maxTokens,
-          system: systemPrompt,
-          messages: [
-            {
-              role: "user",
-              content: userPrompt,
-            },
-          ],
-        }),
-      });
-    } else if (selectedModel.startsWith("grok")) {
-      // xAI API
-      llmResponse = await fetch(apiEndpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: modelName,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
-          max_tokens: maxTokens,
-          temperature: 0.7,
-        }),
-      });
-    }
+          body: JSON.stringify({
+            model: modelName,
+            max_tokens: maxTokens,
+            system: systemPrompt,
+            messages,
+          }),
+        });
+      } else if (selectedModel.startsWith("grok")) {
+        // xAI API
+        const messages = [
+          { role: "system", content: systemPrompt },
+          ...conversationHistory.map((msg) => ({
+            role: msg.role,
+            content: msg.content,
+          })),
+        ];
 
-    if (!llmResponse?.ok) {
-      const errorText = await llmResponse?.text();
-      console.error("LLM API error:", llmResponse?.status, errorText);
-      
-      if (llmResponse?.status === 429) {
-        throw new Error("Rate limit exceeded. Please try again later.");
+        llmResponse = await fetch(apiEndpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: modelName,
+            messages,
+            max_tokens: maxTokens,
+            temperature: 0.7,
+          }),
+        });
       }
-      if (llmResponse?.status === 402) {
-        throw new Error("Payment required. Please add credits to your API account.");
-      }
-      
-      throw new Error(`LLM API error: ${errorText}`);
-    }
 
-    const llmData = await llmResponse.json();
-    console.log("LLM response received");
-
-    // Parse LLM response with robust markdown/code-fence handling
-    let agentResponse: any;
-    if (selectedModel.startsWith("gemini")) {
-      const text = llmData.candidates[0].content.parts[0].text as string;
-      agentResponse = parseAgentResponseText(text);
-    } else if (selectedModel.startsWith("claude")) {
-      const text = llmData.content[0].text as string;
-      agentResponse = parseAgentResponseText(text);
-    } else if (selectedModel.startsWith("grok")) {
-      const text = llmData.choices[0].message.content as string;
-      agentResponse = parseAgentResponseText(text);
-    }
-
-    console.log("Parsed agent response:", agentResponse);
-
-    // Add blackboard entry
-    if (agentResponse.blackboard_entry) {
-      await supabase.rpc("add_blackboard_entry_with_token", {
-        p_session_id: session.id,
-        p_entry_type: agentResponse.blackboard_entry.entry_type,
-        p_content: agentResponse.blackboard_entry.content,
-        p_token: shareToken,
-      });
-    }
-
-    // Execute operations
-    const operationResults = [];
-    for (const op of agentResponse.operations || []) {
-      console.log("Executing operation:", op.type);
-
-      // Log operation start
-      const { data: logEntry } = await supabase.rpc("log_agent_operation_with_token", {
-        p_session_id: session.id,
-        p_operation_type: op.type,
-        p_file_path: op.params.path || op.params.file_path || null,
-        p_status: "in_progress",
-        p_details: op.params,
-        p_token: shareToken,
-      });
-
-      try {
-        let result;
+      if (!llmResponse?.ok) {
+        const errorText = await llmResponse?.text();
+        console.error("LLM API error:", llmResponse?.status, errorText);
         
-        switch (op.type) {
-          case "search":
-            result = await supabase.rpc("agent_search_files_with_token", {
-              p_project_id: projectId,
-              p_keyword: op.params.keyword,
-              p_token: shareToken,
-            });
-            break;
-            
-          case "read_file":
-            result = await supabase.rpc("agent_read_file_with_token", {
-              p_file_id: op.params.file_id,
-              p_token: shareToken,
-            });
-            break;
-            
-          case "edit_lines":
-            // First get the current file content
-            const { data: fileData } = await supabase.rpc("get_file_content_with_token", {
-              p_file_id: op.params.file_id,
-              p_token: shareToken,
-            });
-            
-            if (fileData?.[0]) {
-              // Split into lines and replace the specified range
-              const lines = fileData[0].content.split('\n');
-              const startIdx = op.params.start_line - 1;
-              const endIdx = op.params.end_line - 1;
-              lines.splice(startIdx, endIdx - startIdx + 1, op.params.new_content);
-              const newContent = lines.join('\n');
-              
-              // Stage the edit
-              result = await supabase.rpc("stage_file_change_with_token", {
-                p_repo_id: repoId,
-                p_token: shareToken,
-                p_operation_type: "edit",
-                p_file_path: fileData[0].path,
-                p_old_content: fileData[0].content,
-                p_new_content: newContent,
-              });
-            }
-            break;
-            
-          case "create_file":
-            // Stage the file creation
-            result = await supabase.rpc("stage_file_change_with_token", {
-              p_repo_id: repoId,
-              p_token: shareToken,
-              p_operation_type: "add",
-              p_file_path: op.params.path,
-              p_new_content: op.params.content,
-            });
-            break;
-            
-          case "delete_file":
-            // Get file info first
-            const { data: deleteFileData } = await supabase.rpc("get_file_content_with_token", {
-              p_file_id: op.params.file_id,
-              p_token: shareToken,
-            });
-            
-            if (deleteFileData?.[0]) {
-              // Stage the deletion
-              result = await supabase.rpc("stage_file_change_with_token", {
-                p_repo_id: repoId,
-                p_token: shareToken,
-                p_operation_type: "delete",
-                p_file_path: deleteFileData[0].path,
-                p_old_content: deleteFileData[0].content,
-              });
-            }
-            break;
-            
-          case "rename_file":
-            // Get file info first
-            const { data: renameFileData } = await supabase.rpc("get_file_content_with_token", {
-              p_file_id: op.params.file_id,
-              p_token: shareToken,
-            });
-            
-            if (renameFileData?.[0]) {
-              // Stage the rename
-              result = await supabase.rpc("stage_file_change_with_token", {
-                p_repo_id: repoId,
-                p_token: shareToken,
-                p_operation_type: "rename",
-                p_file_path: op.params.new_path,
-                p_old_path: renameFileData[0].path,
-                p_new_content: renameFileData[0].content,
-              });
-            }
-            break;
+        if (llmResponse?.status === 429) {
+          throw new Error("Rate limit exceeded. Please try again later.");
         }
-
-        if (result?.error) throw result.error;
-
-        // Update operation log to completed
-        await supabase.rpc("update_agent_operation_status_with_token", {
-          p_operation_id: logEntry.id,
-          p_status: "completed",
-          p_token: shareToken,
-        });
-
-        operationResults.push({ type: op.type, success: true, data: result?.data });
-      } catch (error) {
-        console.error("Operation failed:", error);
+        if (llmResponse?.status === 402) {
+          throw new Error("Payment required. Please add credits to your API account.");
+        }
         
-        // Update operation log to failed
-        await supabase.rpc("update_agent_operation_status_with_token", {
-          p_operation_id: logEntry.id,
-          p_status: "failed",
-          p_error_message: error instanceof Error ? error.message : String(error),
-          p_token: shareToken,
-        });
+        throw new Error(`LLM API error: ${errorText}`);
+      }
 
-        operationResults.push({ 
-          type: op.type, 
-          success: false, 
-          error: error instanceof Error ? error.message : String(error) 
+      const llmData = await llmResponse.json();
+      console.log("LLM response received");
+
+      // Parse LLM response
+      let agentResponse: any;
+      if (selectedModel.startsWith("gemini")) {
+        const text = llmData.candidates[0].content.parts[0].text as string;
+        agentResponse = parseAgentResponseText(text);
+      } else if (selectedModel.startsWith("claude")) {
+        const text = llmData.content[0].text as string;
+        agentResponse = parseAgentResponseText(text);
+      } else if (selectedModel.startsWith("grok")) {
+        const text = llmData.choices[0].message.content as string;
+        agentResponse = parseAgentResponseText(text);
+      }
+
+      console.log("Parsed agent response:", agentResponse);
+
+      // Add blackboard entry
+      if (agentResponse.blackboard_entry) {
+        await supabase.rpc("add_blackboard_entry_with_token", {
+          p_session_id: session.id,
+          p_entry_type: agentResponse.blackboard_entry.entry_type,
+          p_content: agentResponse.blackboard_entry.content,
+          p_token: shareToken,
         });
       }
+
+      // Execute operations
+      const operationResults = [];
+      for (const op of agentResponse.operations || []) {
+        console.log("Executing operation:", op.type);
+
+        // Log operation start
+        const { data: logEntry } = await supabase.rpc("log_agent_operation_with_token", {
+          p_session_id: session.id,
+          p_operation_type: op.type,
+          p_file_path: op.params.path || op.params.file_path || null,
+          p_status: "in_progress",
+          p_details: op.params,
+          p_token: shareToken,
+        });
+
+        try {
+          let result;
+          
+          switch (op.type) {
+            case "search":
+              result = await supabase.rpc("agent_search_files_with_token", {
+                p_project_id: projectId,
+                p_keyword: op.params.keyword,
+                p_token: shareToken,
+              });
+              break;
+              
+            case "read_file":
+              result = await supabase.rpc("agent_read_file_with_token", {
+                p_file_id: op.params.file_id,
+                p_token: shareToken,
+              });
+              break;
+              
+            case "edit_lines":
+              const { data: fileData } = await supabase.rpc("get_file_content_with_token", {
+                p_file_id: op.params.file_id,
+                p_token: shareToken,
+              });
+              
+              if (fileData?.[0]) {
+                const lines = fileData[0].content.split('\n');
+                const startIdx = op.params.start_line - 1;
+                const endIdx = op.params.end_line - 1;
+                lines.splice(startIdx, endIdx - startIdx + 1, op.params.new_content);
+                const newContent = lines.join('\n');
+                
+                result = await supabase.rpc("stage_file_change_with_token", {
+                  p_repo_id: repoId,
+                  p_token: shareToken,
+                  p_operation_type: "edit",
+                  p_file_path: fileData[0].path,
+                  p_old_content: fileData[0].content,
+                  p_new_content: newContent,
+                });
+              }
+              break;
+              
+            case "create_file":
+              result = await supabase.rpc("stage_file_change_with_token", {
+                p_repo_id: repoId,
+                p_token: shareToken,
+                p_operation_type: "add",
+                p_file_path: op.params.path,
+                p_new_content: op.params.content,
+              });
+              break;
+              
+            case "delete_file":
+              const { data: deleteFileData } = await supabase.rpc("get_file_content_with_token", {
+                p_file_id: op.params.file_id,
+                p_token: shareToken,
+              });
+              
+              if (deleteFileData?.[0]) {
+                result = await supabase.rpc("stage_file_change_with_token", {
+                  p_repo_id: repoId,
+                  p_token: shareToken,
+                  p_operation_type: "delete",
+                  p_file_path: deleteFileData[0].path,
+                  p_old_content: deleteFileData[0].content,
+                });
+              }
+              break;
+              
+            case "rename_file":
+              const { data: renameFileData } = await supabase.rpc("get_file_content_with_token", {
+                p_file_id: op.params.file_id,
+                p_token: shareToken,
+              });
+              
+              if (renameFileData?.[0]) {
+                result = await supabase.rpc("stage_file_change_with_token", {
+                  p_repo_id: repoId,
+                  p_token: shareToken,
+                  p_operation_type: "rename",
+                  p_file_path: op.params.new_path,
+                  p_old_path: renameFileData[0].path,
+                  p_new_content: renameFileData[0].content,
+                });
+              }
+              break;
+          }
+
+          if (result?.error) throw result.error;
+
+          // Update operation log to completed
+          await supabase.rpc("update_agent_operation_status_with_token", {
+            p_operation_id: logEntry.id,
+            p_status: "completed",
+            p_token: shareToken,
+          });
+
+          operationResults.push({ type: op.type, success: true, data: result?.data });
+        } catch (error) {
+          console.error("Operation failed:", error);
+          
+          // Update operation log to failed
+          await supabase.rpc("update_agent_operation_status_with_token", {
+            p_operation_id: logEntry.id,
+            p_status: "failed",
+            p_error_message: error instanceof Error ? error.message : String(error),
+            p_token: shareToken,
+          });
+
+          operationResults.push({ 
+            type: op.type, 
+            success: false, 
+            error: error instanceof Error ? error.message : String(error) 
+          });
+        }
+      }
+
+      allOperationResults.push(...operationResults);
+
+      // Add operation results to conversation history for next iteration
+      const resultsMessage = `Operation results:\n${JSON.stringify(operationResults, null, 2)}`;
+      conversationHistory.push({
+        role: "assistant",
+        content: JSON.stringify(agentResponse),
+      });
+      conversationHistory.push({
+        role: "user",
+        content: resultsMessage,
+      });
+
+      // Check status to determine if we should continue
+      if (agentResponse.status === "completed" || agentResponse.status === "requires_commit") {
+        finalStatus = agentResponse.status === "completed" ? "completed" : "pending_commit";
+        console.log(`Agent signaled completion with status: ${agentResponse.status}`);
+        break;
+      }
+
+      // If status is still "in_progress", continue to next iteration
+      console.log("Continuing to next iteration...");
     }
 
     // Update session status
-    const finalStatus = agentResponse.status === "completed" ? "completed" : 
-                       agentResponse.status === "requires_commit" ? "pending_commit" : 
-                       "running";
-    
     await supabase.rpc("update_agent_session_status_with_token", {
       p_session_id: session.id,
       p_status: finalStatus,
@@ -476,8 +510,8 @@ Execute file operations carefully and document your reasoning.`;
       JSON.stringify({
         sessionId: session.id,
         status: finalStatus,
-        reasoning: agentResponse.reasoning,
-        operations: operationResults,
+        iterations: iteration,
+        operations: allOperationResults,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
