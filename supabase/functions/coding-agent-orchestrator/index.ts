@@ -608,11 +608,24 @@ Think step-by-step and continue iterating aggressively until the task is EXHAUST
               break;
               
             case "edit_lines":
-              // Get committed file data first
-              const { data: fileData } = await supabase.rpc("get_file_content_with_token", {
+              // Read file using agent function that checks both repo_files and repo_staging
+              console.log(`[AGENT] edit_lines: Reading file ${op.params.file_id}`);
+              const { data: fileData, error: readError } = await supabase.rpc("agent_read_file_with_token", {
                 p_file_id: op.params.file_id,
                 p_token: shareToken,
               });
+              
+              if (readError) {
+                console.error(`[AGENT] edit_lines: Read error:`, readError);
+                throw new Error(`Failed to read file ${op.params.file_id}: ${readError.message}`);
+              }
+              
+              if (!fileData || fileData.length === 0) {
+                console.error(`[AGENT] edit_lines: File not found: ${op.params.file_id}`);
+                throw new Error(`File not found: ${op.params.file_id}. Cannot edit. The file may not exist or may have been deleted.`);
+              }
+              
+              console.log(`[AGENT] edit_lines: File found: ${fileData[0].path}, content length: ${fileData[0].content?.length || 0}`);
               
               if (fileData?.[0]) {
                 // Check if file is already staged to accumulate edits correctly
@@ -673,6 +686,7 @@ Think step-by-step and continue iterating aggressively until the task is EXHAUST
                 }
                 
                 // Stage the change (UPSERT will preserve original old_content baseline)
+                console.log(`[AGENT] edit_lines: Staging edit for ${fileData[0].path}, lines ${op.params.start_line}-${op.params.end_line}`);
                 result = await supabase.rpc("stage_file_change_with_token", {
                   p_repo_id: repoId,
                   p_token: shareToken,
@@ -680,6 +694,17 @@ Think step-by-step and continue iterating aggressively until the task is EXHAUST
                   p_file_path: fileData[0].path,
                   p_old_content: fileData[0].content,
                   p_new_content: finalContent,
+                });
+                
+                if (result.error) {
+                  console.error(`[AGENT] edit_lines: Staging failed:`, result.error);
+                  throw new Error(`Failed to stage edit: ${result.error.message}`);
+                }
+                
+                console.log(`[AGENT] edit_lines: Successfully staged edit for ${fileData[0].path}`, {
+                  staging_id: result.data?.id,
+                  operation_type: 'edit',
+                  file_path: fileData[0].path,
                 });
                 
                 // Include the new content in result for agent to verify
