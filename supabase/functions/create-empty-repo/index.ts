@@ -1,0 +1,142 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const { projectId, repoName, shareToken } = await req.json();
+
+    if (!projectId || !repoName || !shareToken) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required fields' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Create Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const authHeader = req.headers.get('Authorization');
+    
+    const supabase = createClient(supabaseUrl, supabaseKey, {
+      global: {
+        headers: authHeader ? { Authorization: authHeader } : {},
+      },
+    });
+
+    // Validate project access
+    const { data: project, error: projectError } = await supabase.rpc('get_project_with_token', {
+      p_project_id: projectId,
+      p_token: shareToken
+    });
+
+    if (projectError || !project) {
+      throw new Error('Invalid project access');
+    }
+
+    // Get GitHub PAT
+    const githubPat = Deno.env.get('GITHUB_PAT');
+    if (!githubPat) {
+      throw new Error('GitHub PAT not configured');
+    }
+
+    const organization = 'pronghorn-red';
+
+    // Create empty repository on GitHub
+    const createRepoResponse = await fetch(`https://api.github.com/orgs/${organization}/repos`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `token ${githubPat}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: repoName,
+        private: false,
+        auto_init: true, // Initialize with README
+        description: `Repository for ${project.name}`,
+      }),
+    });
+
+    if (!createRepoResponse.ok) {
+      const errorData = await createRepoResponse.json();
+      throw new Error(`GitHub API error: ${errorData.message || 'Failed to create repository'}`);
+    }
+
+    const repoData = await createRepoResponse.json();
+
+    // Link repository to project
+    const { data: newRepo, error: repoError } = await supabase.rpc('create_project_repo_with_token', {
+      p_project_id: projectId,
+      p_token: shareToken,
+      p_organization: organization,
+      p_repo: repoName,
+      p_branch: 'main',
+      p_is_default: true
+    });
+
+    if (repoError) {
+      console.error('Error linking repository:', repoError);
+      throw new Error('Failed to link repository to project');
+    }
+
+    // Initialize with basic project structure
+    const initialFiles = [
+      {
+        path: 'README.md',
+        content: `# ${project.name}\n\n${project.description || 'Project repository'}\n`,
+      },
+      {
+        path: '.gitkeep',
+        content: '',
+      }
+    ];
+
+    // Get the latest commit SHA from main branch
+    const refResponse = await fetch(`https://api.github.com/repos/${organization}/${repoName}/git/ref/heads/main`, {
+      headers: {
+        'Authorization': `token ${githubPat}`,
+        'Accept': 'application/vnd.github.v3+json',
+      },
+    });
+
+    const refData = await refResponse.json();
+    const latestCommitSha = refData.object.sha;
+
+    // Store files in database
+    for (const file of initialFiles) {
+      await supabase.rpc('upsert_file_with_token', {
+        p_repo_id: newRepo.id,
+        p_path: file.path,
+        p_content: file.content,
+        p_token: shareToken,
+        p_commit_sha: latestCommitSha
+      });
+    }
+
+    console.log(`Created empty repository: ${organization}/${repoName}`);
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        repo: newRepo,
+        githubUrl: repoData.html_url
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+
+  } catch (error) {
+    console.error('Error in create-empty-repo:', error);
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Internal server error' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+});
