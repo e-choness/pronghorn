@@ -297,6 +297,7 @@ export function StagingPanel({ projectId, onViewDiff }: StagingPanelProps) {
               filePath={viewingDiff.file_path}
               repoId={repoId || ""}
               isStaged={true}
+              initialContent={viewingDiff.new_content || ""}
               onClose={() => setViewingDiff(null)}
               onSave={loadRepoAndStagedChanges}
             />

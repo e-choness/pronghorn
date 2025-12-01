@@ -11,12 +11,13 @@ interface CodeEditorProps {
   filePath: string | null;
   repoId: string;
   isStaged?: boolean;
+  initialContent?: string;
   onClose: () => void;
   onSave: () => void;
   onAutoSync?: () => void;
 }
 
-export function CodeEditor({ fileId, filePath, repoId, isStaged, onClose, onSave, onAutoSync }: CodeEditorProps) {
+export function CodeEditor({ fileId, filePath, repoId, isStaged, initialContent, onClose, onSave, onAutoSync }: CodeEditorProps) {
   const [content, setContent] = useState("");
   const [originalContent, setOriginalContent] = useState("");
   const [loading, setLoading] = useState(false);
@@ -26,13 +27,18 @@ export function CodeEditor({ fileId, filePath, repoId, isStaged, onClose, onSave
   const shareToken = searchParams.get("token");
 
   useEffect(() => {
-    if (fileId) {
+    if (initialContent !== undefined) {
+      // Use provided content directly
+      setContent(initialContent);
+      setOriginalContent(initialContent);
+      setLoading(false);
+    } else if (fileId) {
       loadFileContent();
     } else {
       setContent("");
       setOriginalContent("");
     }
-  }, [fileId, isStaged, filePath]);
+  }, [fileId, isStaged, filePath, initialContent]);
 
   const loadFileContent = async () => {
     if (!fileId) return;
