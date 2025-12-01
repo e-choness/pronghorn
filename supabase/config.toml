@@ -54,3 +54,12 @@ verify_jwt = false
 
 [functions.sync-repo-pull]
 verify_jwt = false
+
+[functions.create-empty-repo]
+verify_jwt = false
+
+[functions.create-repo-from-template]
+verify_jwt = false
+
+[functions.link-existing-repo]
+verify_jwt = false

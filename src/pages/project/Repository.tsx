@@ -137,116 +137,6 @@ export default function Repository() {
     }
   };
 
-  const handleCreateEmpty = async (name: string) => {
-    if (!projectId) return;
-
-    try {
-      const { error } = await supabase.rpc("create_project_repo_with_token", {
-        p_project_id: projectId,
-        p_token: shareToken || null,
-        p_organization: "pronghorn-red",
-        p_repo: name,
-        p_branch: "main",
-        p_is_default: repos.length === 0,
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: "Repository created",
-        description: `Created empty repository: pronghorn-red/${name}`,
-      });
-
-      refetch();
-    } catch (error: any) {
-      console.error("Error creating repo:", error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create repository",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleCreateFromTemplate = async (name: string, templateOrg: string, templateRepo: string) => {
-    if (!projectId) return;
-
-    try {
-      const { error } = await supabase.rpc("create_project_repo_with_token", {
-        p_project_id: projectId,
-        p_token: shareToken || null,
-        p_organization: "pronghorn-red",
-        p_repo: name,
-        p_branch: "main",
-        p_is_default: repos.length === 0,
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: "Repository created from template",
-        description: `Cloning ${templateOrg}/${templateRepo} to ${name}`,
-      });
-
-      refetch();
-    } catch (error: any) {
-      console.error("Error creating repo:", error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create repository from template",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleLinkExisting = async (org: string, repo: string, branch: string, pat?: string) => {
-    if (!projectId) return;
-
-    try {
-      const { data, error } = await supabase.rpc("create_project_repo_with_token", {
-        p_project_id: projectId,
-        p_token: shareToken || null,
-        p_organization: org,
-        p_repo: repo,
-        p_branch: branch,
-        p_is_default: false,
-      });
-
-      if (error) throw error;
-
-      if (pat && data) {
-        const { error: patError } = await supabase.rpc("insert_repo_pat_with_token", {
-          p_repo_id: data.id,
-          p_pat: pat,
-        });
-
-        if (patError) {
-          console.error("Error storing PAT:", patError);
-          toast({
-            title: "Repository linked, but PAT not saved",
-            description: "Repository was linked successfully, but there was an error storing the PAT",
-            variant: "destructive",
-          });
-          return;
-        }
-      }
-
-      toast({
-        title: "Repository linked",
-        description: `Linked ${org}/${repo} (${branch})`,
-      });
-
-      refetch();
-    } catch (error: any) {
-      console.error("Error linking repo:", error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to link repository",
-        variant: "destructive",
-      });
-    }
-  };
-
   const handleDeleteRepo = async (repoId: string) => {
     try {
       const { error } = await supabase.rpc("delete_project_repo_with_token", {
@@ -280,6 +170,98 @@ export default function Repository() {
         name: `${repo.organization}/${repo.repo}`
       });
       setManagePATDialogOpen(true);
+    }
+  };
+
+  const handleCreateEmpty = async (name: string) => {
+    if (!projectId) return;
+    
+    try {
+      const { error } = await supabase.functions.invoke('create-empty-repo', {
+        body: {
+          projectId,
+          repoName: name,
+          shareToken: shareToken || null
+        }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Repository created",
+        description: "Empty repository created successfully",
+      });
+      refetch();
+    } catch (error) {
+      console.error('Error creating empty repository:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create empty repository",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCreateFromTemplate = async (name: string, templateOrg: string, templateRepo: string) => {
+    if (!projectId) return;
+    
+    try {
+      const { error } = await supabase.functions.invoke('create-repo-from-template', {
+        body: {
+          projectId,
+          repoName: name,
+          templateOrg,
+          templateRepo,
+          shareToken: shareToken || null
+        }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Repository created",
+        description: "Repository created from template successfully",
+      });
+      refetch();
+    } catch (error) {
+      console.error('Error creating repository from template:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create repository from template",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleLinkExisting = async (org: string, repo: string, branch: string, pat?: string) => {
+    if (!projectId) return;
+    
+    try {
+      const { error } = await supabase.functions.invoke('link-existing-repo', {
+        body: {
+          projectId,
+          organization: org,
+          repo,
+          branch,
+          pat,
+          shareToken: shareToken || null
+        }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Repository linked",
+        description: "Repository linked successfully",
+      });
+      refetch();
+    } catch (error) {
+      console.error('Error linking repository:', error);
+      toast({
+        title: "Error",
+        description: "Failed to link repository",
+        variant: "destructive",
+      });
     }
   };
 
