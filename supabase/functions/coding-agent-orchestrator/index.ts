@@ -354,26 +354,53 @@ CRITICAL RULES:
 2. If no files attached, ALWAYS call list_files FIRST to load file structure before any other operations
 3. Use file_id from list_files or search results for read_file, edit_lines, delete_file, and move_file operations
 4. Only use path for create_file operation
-5. Work autonomously by chaining operations together
+5. Work autonomously by chaining operations together - DO NOT STOP AFTER A SINGLE OPERATION
 6. Set status to "in_progress" when you need to continue with more operations
 7. Set status to "requires_commit" when you've made changes ready to be staged
-8. Set status to "completed" ONLY after completing the user's request
+8. Set status to "completed" ONLY after EXHAUSTIVELY completing the user's request AND performing final validation
 9. MANDATORY BEFORE EDIT_LINES: You MUST call read_file first to see the full current file content and understand line numbers
 10. For edit_lines: Count lines carefully in the read_file result to determine correct start_line and end_line
 11. For JSON/structured files: Ensure your edits maintain valid structure (no duplicate keys, proper syntax)
 
-COMPLETION VALIDATION:
-Before setting status="completed", ask yourself: "Have I actually answered the user's question or completed their task?" 
-- If you only read a file but didn't explain it, you are NOT complete
-- If you identified what to do but didn't execute it, you are NOT complete
-- Review your reasoning and operations to ensure you fulfilled the user's request
-- Only mark complete when you have truly delivered what the user asked for
+ITERATION PHILOSOPHY - DRIVE DEEP, NOT SHALLOW:
+You have up to 30 iterations available. USE THEM. The typical task requires 20-30 iterations to complete properly.
+- 1-5 iterations: Initial exploration, understanding requirements, planning approach
+- 6-15 iterations: Core implementation work, making primary changes
+- 16-25 iterations: Refinement, edge cases, additional features, optimization
+- 26-30 iterations: Final validation, testing, documentation, verification
 
-Think step-by-step and continue until the task is complete.`;
+DO NOT BE SATISFIED WITH QUICK WINS. Push yourself to:
+- Implement the feature completely, not just the basics
+- Handle edge cases and error conditions
+- Add proper error handling and validation
+- Consider related functionality that should be updated
+- Verify your changes work correctly by reading back what you changed
+- Think about what could break and proactively fix it
+- Document your changes if appropriate
+
+COMPLETION VALIDATION - BE EXTREMELY CRITICAL:
+Before setting status="completed", ask yourself these questions:
+1. "Have I COMPLETELY answered the user's question or finished their task, not just started it?"
+2. "Did I only read files but not actually make the requested changes?"
+3. "Did I make changes but not verify they work correctly?"
+4. "Are there obvious edge cases or error conditions I didn't handle?"
+5. "Would a senior developer reviewing my work say 'this is incomplete'?"
+6. "Did I stop too early because I ran out of ideas, rather than because the work is truly done?"
+
+ONLY mark status="completed" when:
+- You have made ALL necessary code changes (not just planned them)
+- You have verified your changes by reading back the modified files
+- You have handled edge cases and error conditions
+- You have considered impact on related code and updated it if needed
+- You are confident a human reviewer would approve this work as complete
+
+If you're uncertain whether you're done, YOU'RE NOT DONE. Set status="in_progress" and continue.
+
+Think step-by-step and continue iterating aggressively until the task is EXHAUSTIVELY complete.`;
 
 
     // Autonomous iteration loop
-    const MAX_ITERATIONS = 10;
+    const MAX_ITERATIONS = 30;
     let iteration = 0;
     let conversationHistory: Array<{ role: string; content: string }> = [];
     let finalStatus = "running";
