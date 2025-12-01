@@ -256,11 +256,12 @@ export default function Build() {
             </div>
 
             {/* Mobile Layout (< md) - Full Screen Tabs */}
-            <div className="flex-1 overflow-hidden block md:hidden">
+            <div className="md:hidden flex-1 overflow-hidden">
               <Tabs defaultValue="files" className="h-full flex flex-col">
-                <TabsList className="grid w-full grid-cols-5 shrink-0">
+                <TabsList className="grid w-full grid-cols-6 shrink-0">
                   <TabsTrigger value="files" className="text-xs">Files</TabsTrigger>
                   <TabsTrigger value="agent" className="text-xs">Agent</TabsTrigger>
+                  <TabsTrigger value="chat" className="text-xs">Chat</TabsTrigger>
                   <TabsTrigger value="progress" className="text-xs">Progress</TabsTrigger>
                   <TabsTrigger value="staging" className="text-xs">Staging</TabsTrigger>
                   <TabsTrigger value="history" className="text-xs">History</TabsTrigger>
@@ -296,6 +297,10 @@ export default function Build() {
                   />
                 </TabsContent>
 
+                <TabsContent value="chat" className="flex-1 overflow-auto mt-0 p-3">
+                  <AgentChatViewer sessionId={activeSessionId} shareToken={shareToken} />
+                </TabsContent>
+
                 <TabsContent value="progress" className="flex-1 overflow-auto mt-0 p-3">
                   <AgentProgressMonitor 
                     sessionId={activeSessionId}
@@ -314,7 +319,7 @@ export default function Build() {
             </div>
 
             {/* Desktop Layout (>= md) - Resizable Panels */}
-            <ResizablePanelGroup direction="horizontal" className="flex-1 hidden md:flex overflow-hidden">
+            <ResizablePanelGroup direction="horizontal" className="hidden md:flex flex-1 overflow-hidden">
               {/* Left: File Tree */}
               <ResizablePanel defaultSize={20} minSize={15}>
                 <div className="h-full border-r">
