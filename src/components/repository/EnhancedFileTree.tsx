@@ -176,18 +176,26 @@ function TreeNode({
       </FileTreeContextMenu>
       {isOpen && node.children && (
         <div>
-          {node.children.map((child) => (
-            <TreeNode
-              key={child.path}
-              node={child}
-              level={level + 1}
-              onFileSelect={onFileSelect}
-              selectedPath={selectedPath}
-              onFileCreate={onFileCreate}
-              onFileRename={onFileRename}
-              onFileDelete={onFileDelete}
-            />
-          ))}
+          {[...node.children]
+            .sort((a, b) => {
+              // Folders first
+              if (a.type === 'folder' && b.type === 'file') return -1;
+              if (a.type === 'file' && b.type === 'folder') return 1;
+              // Then alphabetically
+              return a.name.localeCompare(b.name);
+            })
+            .map((child) => (
+              <TreeNode
+                key={child.path}
+                node={child}
+                level={level + 1}
+                onFileSelect={onFileSelect}
+                selectedPath={selectedPath}
+                onFileCreate={onFileCreate}
+                onFileRename={onFileRename}
+                onFileDelete={onFileDelete}
+              />
+            ))}
         </div>
       )}
       <CreateFileDialog
@@ -323,17 +331,25 @@ export function EnhancedFileTree({ files, onFileSelect, selectedPath, onFileCrea
                 </div>
               </div>
             ) : (
-              filteredFiles.map((node) => (
-                <TreeNode
-                  key={node.path}
-                  node={node}
-                  onFileSelect={onFileSelect}
-                  selectedPath={selectedPath}
-                  onFileCreate={onFileCreate}
-                  onFileRename={onFileRename}
-                  onFileDelete={onFileDelete}
-                />
-              ))
+              [...filteredFiles]
+                .sort((a, b) => {
+                  // Folders first
+                  if (a.type === 'folder' && b.type === 'file') return -1;
+                  if (a.type === 'file' && b.type === 'folder') return 1;
+                  // Then alphabetically
+                  return a.name.localeCompare(b.name);
+                })
+                .map((node) => (
+                  <TreeNode
+                    key={node.path}
+                    node={node}
+                    onFileSelect={onFileSelect}
+                    selectedPath={selectedPath}
+                    onFileCreate={onFileCreate}
+                    onFileRename={onFileRename}
+                    onFileDelete={onFileDelete}
+                  />
+                ))
             )}
           </div>
         </FileTreeContextMenu>
