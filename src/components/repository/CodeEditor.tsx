@@ -88,8 +88,9 @@ export function CodeEditor({
           const stagedContent = latestChange.new_content || "";
           setContent(stagedContent);
           // Preserve the original baseline content for diffs/commits
-          setOriginalContent(latestChange.old_content || stagedContent);
-          console.log("Loaded staged content for:", filePath);
+          // For new files (operation_type='add'), old_content will be null/empty - keep it that way for proper diff
+          setOriginalContent(latestChange.old_content || "");
+          console.log("Loaded staged content for:", filePath, "operation:", latestChange.operation_type);
           return;
         } else {
           console.log("No staged changes found for:", filePath);
