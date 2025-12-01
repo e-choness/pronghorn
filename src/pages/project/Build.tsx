@@ -48,7 +48,7 @@ export default function Build() {
     if (defaultRepo && projectId && isTokenSet) {
       loadFiles();
     }
-  }, [defaultRepo, projectId, shareToken, isTokenSet]);
+  }, [defaultRepo, projectId, shareToken, isTokenSet, showDeletedFiles]);
 
   // Real-time subscription for file and staging changes
   useEffect(() => {
