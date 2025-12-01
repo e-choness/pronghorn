@@ -183,7 +183,12 @@ Deno.serve(async (req) => {
     }
 
     const currentTreeData = await currentTreeResponse.json();
-    const currentFiles = new Set(currentTreeData.tree?.map((item: any) => item.path) || []);
+    // Only track actual files (blobs), not folders (trees)
+    const currentFiles = new Set(
+      currentTreeData.tree
+        ?.filter((item: any) => item.type === 'blob')
+        .map((item: any) => item.path) || []
+    );
     const dbFilePaths = new Set(filesToPush.map((f: RepoFile) => f.path));
 
     // Create blobs for each file
