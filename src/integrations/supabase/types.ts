@@ -1562,6 +1562,31 @@ export type Database = {
           type: string
         }[]
       }
+      agent_read_file_with_token: {
+        Args: { p_file_id: string; p_token: string }
+        Returns: {
+          content: string
+          id: string
+          path: string
+        }[]
+      }
+      agent_read_multiple_files_with_token: {
+        Args: { p_file_ids: string[]; p_token: string }
+        Returns: {
+          content: string
+          id: string
+          path: string
+        }[]
+      }
+      agent_search_files_with_token: {
+        Args: { p_keyword: string; p_project_id: string; p_token: string }
+        Returns: {
+          content: string
+          id: string
+          match_type: string
+          path: string
+        }[]
+      }
       agent_search_requirements_with_token: {
         Args: { p_project_id: string; p_search_term?: string; p_token: string }
         Returns: {
@@ -1753,7 +1778,7 @@ export type Database = {
         Returns: string
       }
       get_agent_operations_with_token: {
-        Args: { p_session_id: string; p_token?: string }
+        Args: { p_session_id: string; p_token: string }
         Returns: {
           completed_at: string | null
           created_at: string
