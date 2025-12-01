@@ -232,16 +232,18 @@ export function AgentFileTree({
   };
 
   return (
-    <ScrollArea className="h-full bg-[#1e1e1e]">
-      <div className="py-2">
-        {tree.length === 0 ? (
-          <div className="px-4 py-8 text-center">
-            <p className="text-sm text-[#858585]">No files yet</p>
-          </div>
-        ) : (
-          tree.map((node) => renderNode(node))
-        )}
-      </div>
-    </ScrollArea>
+    <div className="h-full flex flex-col bg-[#1e1e1e]">
+      <ScrollArea className="flex-1 overflow-y-auto">
+        <div className="py-2">
+          {tree.length === 0 ? (
+            <div className="px-4 py-8 text-center">
+              <p className="text-sm text-[#858585]">No files yet</p>
+            </div>
+          ) : (
+            tree.map((node) => renderNode(node))
+          )}
+        </div>
+      </ScrollArea>
+    </div>
   );
 }
