@@ -418,6 +418,7 @@ export default function Build() {
                               setSelectedDiff(null);
                             }}
                             onSave={loadFiles}
+                            onAutoSync={loadFiles}
                           />
                         ) : (
                           <CodeEditor
@@ -431,6 +432,7 @@ export default function Build() {
                               setSelectedFileIsStaged(false);
                             }}
                             onSave={loadFiles}
+                            onAutoSync={loadFiles}
                           />
                         )}
                       </div>
@@ -576,6 +578,7 @@ export default function Build() {
                             setSelectedDiff(null);
                             setDiffEnabled(false);
                           }}
+                          onAutoSync={loadFiles}
                         />
                       ) : (
                         <CodeEditor
@@ -588,6 +591,7 @@ export default function Build() {
                             setSelectedFilePath(null);
                             setSelectedFileIsStaged(false);
                           }}
+                          onAutoSync={loadFiles}
                         />
                       )}
                     </div>

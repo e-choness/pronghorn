@@ -464,6 +464,7 @@ Think step-by-step and continue until the task is complete.`;
                 p_token: shareToken,
                 p_operation_type: "add",
                 p_file_path: op.params.path,
+                p_old_content: "",  // Empty string for new files, not NULL
                 p_new_content: op.params.content,
               });
               break;
