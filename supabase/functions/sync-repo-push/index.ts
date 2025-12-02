@@ -273,19 +273,26 @@ Deno.serve(async (req) => {
       })
     );
 
-    // Handle deletions: mark files that are in GitHub but not in DB for removal
-    const deletions = Array.from(currentFiles).filter(path => !dbFilePaths.has(path as string));
-    deletions.forEach(path => {
-      tree.push({
-        path: path as string,
-        mode: '100644',
-        type: 'blob',
-        sha: null, // null sha means delete this file
-      });
-    });
+    // Handle deletions ONLY when doing a full sync (no filePaths filter)
+    // When filePaths is provided, we're doing a delta push - only push changed files
+    const isFullSync = !filePaths || filePaths.length === 0;
 
-    if (deletions.length > 0) {
-      console.log(`Deleting ${deletions.length} files from GitHub:`, deletions);
+    if (isFullSync) {
+      const deletions = Array.from(currentFiles).filter(path => !dbFilePaths.has(path as string));
+      deletions.forEach(path => {
+        tree.push({
+          path: path as string,
+          mode: '100644',
+          type: 'blob',
+          sha: null, // null sha means delete this file
+        });
+      });
+
+      if (deletions.length > 0) {
+        console.log(`Full sync: Deleting ${deletions.length} files from GitHub:`, deletions);
+      }
+    } else {
+      console.log(`Delta push mode: pushing ${filePaths.length} specific files, skipping deletion calculation`);
     }
 
     // Create new tree based on the current Git tree so GitHub can compute a proper diff
