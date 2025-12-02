@@ -21,7 +21,8 @@ import {
   Zap,
   GitCommit,
   ChevronDown,
-  Settings
+  Settings,
+  Square
 } from 'lucide-react';
 import { useInfiniteAgentMessages } from '@/hooks/useInfiniteAgentMessages';
 import { useInfiniteAgentOperations } from '@/hooks/useInfiniteAgentOperations';
@@ -86,6 +87,7 @@ export function UnifiedAgentInterface({
   const operationObserverRef = useRef<IntersectionObserver | null>(null);
   const messageLoadMoreTriggerRef = useRef<HTMLDivElement>(null);
   const operationLoadMoreTriggerRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Detect when component becomes visible (for mobile tab switching)
   useEffect(() => {
@@ -210,8 +212,13 @@ export function UnifiedAgentInterface({
       if (sessionsError) throw sessionsError;
       if (!sessions || sessions.length === 0) return '';
 
-      // Get all session IDs for this project
-      const sessionIds = sessions.map((s: any) => s.id);
+      // Get all session IDs for this project and filter out invalid ones
+      const sessionIds = sessions
+        .map((s: any) => s.id)
+        .filter((id: string) => id && id.trim() !== '');
+
+      // Return early if no valid session IDs
+      if (sessionIds.length === 0) return '';
 
       // Build query for messages from these sessions
       let query = supabase
@@ -301,6 +308,9 @@ export function UnifiedAgentInterface({
       // Retrieve chat history if enabled
       const chatHistory = await retrieveChatHistory();
 
+      // Create abort controller for this request
+      abortControllerRef.current = new AbortController();
+
       const { error } = await supabase.functions.invoke('coding-agent-orchestrator', {
         body: {
           projectId,
@@ -321,21 +331,42 @@ export function UnifiedAgentInterface({
             canvasEdges: attachedContext.canvasEdges.length > 0 ? attachedContext.canvasEdges : undefined,
           } : {},
         },
+        signal: abortControllerRef.current.signal,
       });
 
-      if (error) throw error;
+      if (error) {
+        // Check if this was an abort
+        if (error.message?.includes('aborted')) {
+          throw new Error('Task cancelled by user');
+        }
+        throw error;
+      }
 
       toast.success('Agent task submitted');
 
       // Refresh messages and operations
       refetchMessages();
       refetchOperations();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error submitting task:', error);
-      toast.error('Failed to submit task');
+      if (error.message?.includes('cancelled')) {
+        toast.info('Task cancelled');
+      } else {
+        toast.error('Failed to submit task');
+      }
       setMessages(previousMessages);
     } finally {
       setIsSubmitting(false);
+      abortControllerRef.current = null;
+    }
+  };
+
+  const handleStop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      setIsSubmitting(false);
+      abortControllerRef.current = null;
+      toast.info('Stopping agent...');
     }
   };
 
@@ -734,12 +765,13 @@ export function UnifiedAgentInterface({
             className="min-h-[60px]"
           />
           <Button
-            onClick={handleSubmit}
-            disabled={!taskInput.trim() || isSubmitting || !repoId}
+            onClick={isSubmitting ? handleStop : handleSubmit}
+            disabled={!isSubmitting && (!taskInput.trim() || !repoId)}
             size="icon"
+            variant={isSubmitting ? "destructive" : "default"}
           >
             {isSubmitting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Square className="h-4 w-4" />
             ) : (
               <Send className="h-4 w-4" />
             )}
