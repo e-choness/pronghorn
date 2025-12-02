@@ -895,7 +895,7 @@ export default function Chat() {
                           className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                         >
                           <Card
-                            className={`w-full md:max-w-[85%] p-4 ${
+                            className={`w-full md:max-w-[85%] p-4 overflow-hidden ${
                               message.role === "user" ? "bg-primary text-primary-foreground" : ""
                             }`}
                           >
@@ -920,9 +920,9 @@ export default function Chat() {
                               </Button>
                             </div>
                           </div>
-                          <div className="prose prose-sm dark:prose-invert max-w-none [&_p]:mb-4 [&_ul]:my-4 [&_ol]:my-4 [&_li]:mb-2 [&_h1]:mb-4 [&_h2]:mb-4 [&_h3]:mb-3 [&_h4]:mb-3">
+                          <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_p]:mb-4 [&_ul]:my-4 [&_ol]:my-4 [&_li]:mb-2 [&_h1]:mb-4 [&_h2]:mb-4 [&_h3]:mb-3 [&_h4]:mb-3 [&_pre]:overflow-x-auto [&_code]:break-words">
                             {message.role === "user" ? (
-                              <div className="whitespace-pre-wrap">{message.content}</div>
+                              <div className="whitespace-pre-wrap break-words">{message.content}</div>
                             ) : (
                               <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
                             )}
@@ -934,8 +934,8 @@ export default function Chat() {
 
                     {streamingContent && (
                       <div className="flex justify-start">
-                        <Card className="w-full md:max-w-[85%] p-4">
-                          <div className="prose prose-sm dark:prose-invert max-w-none [&_p]:mb-4 [&_ul]:my-4 [&_ol]:my-4 [&_li]:mb-2 [&_h1]:mb-4 [&_h2]:mb-4 [&_h3]:mb-3 [&_h4]:mb-3">
+                        <Card className="w-full md:max-w-[85%] p-4 overflow-hidden">
+                          <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_p]:mb-4 [&_ul]:my-4 [&_ol]:my-4 [&_li]:mb-2 [&_h1]:mb-4 [&_h2]:mb-4 [&_h3]:mb-3 [&_h4]:mb-3 [&_pre]:overflow-x-auto [&_code]:break-words">
                             <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
                           </div>
                         </Card>
