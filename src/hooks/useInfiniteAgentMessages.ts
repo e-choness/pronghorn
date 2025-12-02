@@ -98,12 +98,7 @@ export function useInfiniteAgentMessages(projectId: string | null, shareToken: s
       if (error) throw error;
       
       const newMessages = data || [];
-      // Deduplicate: only add messages that don't already exist
-      setMessages((prev) => {
-        const existingIds = new Set(prev.map(m => m.id));
-        const uniqueNew = newMessages.filter((m: AgentMessage) => !existingIds.has(m.id));
-        return [...prev, ...uniqueNew];
-      });
+      setMessages((prev) => [...prev, ...newMessages]);
       setHasMore(newMessages.length === LIMIT);
       setOffset((prev) => prev + LIMIT);
     } catch (error) {

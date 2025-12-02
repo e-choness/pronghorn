@@ -102,7 +102,6 @@ export function UnifiedAgentInterface({
   const abortControllerRef = useRef<AbortController | null>(null);
   const anchorIdBeforeLoad = useRef<string | null>(null);
   const anchorOffsetBeforeLoad = useRef<number>(0);
-  const isLoadingMoreRef = useRef(false);
 
   // Detect when component becomes visible (for mobile tab switching)
   useEffect(() => {
@@ -131,19 +130,10 @@ export function UnifiedAgentInterface({
     setMessages(loadedMessages);
   }, [loadedMessages]);
 
-  // Combine messages and operations into a unified timeline, deduplicated
-  const timeline = (() => {
-    const combined = [...messages, ...operations];
-    const seen = new Set<string>();
-    const deduped = combined.filter(item => {
-      if (seen.has(item.id)) return false;
-      seen.add(item.id);
-      return true;
-    });
-    return deduped.sort((a, b) => 
-      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-    );
-  })();
+  // Combine messages and operations into a unified timeline
+  const timeline = [...messages, ...operations].sort((a, b) => 
+    new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
 
   // Auto-scroll detection (like Chat.tsx)
   useEffect(() => {
@@ -176,15 +166,9 @@ export function UnifiedAgentInterface({
   useEffect(() => {
     if (messagesLoading || !hasMoreMessages) return;
 
-    const observer = new IntersectionObserver(
+    messageObserverRef.current = new IntersectionObserver(
       (entries) => {
-        // Prevent re-triggering while already loading or restoring scroll
-        if (entries[0].isIntersecting && !isLoadingMoreRef.current) {
-          isLoadingMoreRef.current = true;
-          
-          // Disconnect observer immediately to prevent re-fires
-          observer.disconnect();
-          
+        if (entries[0].isIntersecting) {
           // Find the first timeline item that's visible in viewport and store its ID
           const viewport = scrollViewportRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
           if (viewport) {
@@ -208,14 +192,14 @@ export function UnifiedAgentInterface({
       { threshold: 0.1 }
     );
 
-    messageObserverRef.current = observer;
-
     if (messageLoadMoreTriggerRef.current) {
-      observer.observe(messageLoadMoreTriggerRef.current);
+      messageObserverRef.current.observe(messageLoadMoreTriggerRef.current);
     }
 
     return () => {
-      observer.disconnect();
+      if (messageObserverRef.current) {
+        messageObserverRef.current.disconnect();
+      }
     };
   }, [messagesLoading, hasMoreMessages, loadMoreMessages]);
 
@@ -242,12 +226,6 @@ export function UnifiedAgentInterface({
           viewport.scrollTop += adjustment;
         }
         anchorIdBeforeLoad.current = null;
-        
-        // Reset loading flag AFTER scroll restoration - allow re-observing
-        // Small delay to ensure scroll position is stable
-        setTimeout(() => {
-          isLoadingMoreRef.current = false;
-        }, 100);
       }, 50);
     }
   }, [timeline.length]);
