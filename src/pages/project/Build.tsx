@@ -15,7 +15,7 @@ import { UnifiedAgentInterface } from "@/components/build/UnifiedAgentInterface"
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useRealtimeRepos } from "@/hooks/useRealtimeRepos";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Menu, FilePlus, FolderPlus, Eye, EyeOff } from "lucide-react";
+import { ChevronLeft, ChevronRight, Menu, FilePlus, FolderPlus, Eye, EyeOff, Settings } from "lucide-react";
 import { CreateFileDialog } from "@/components/repository/CreateFileDialog";
 
 export default function Build() {
@@ -410,7 +410,22 @@ export default function Build() {
                       <ResizablePanel defaultSize={30} minSize={25}>
                         <div className="h-full flex flex-col">
                           <div className="flex items-center justify-between p-2 border-b">
-                            <span className="text-sm font-semibold">Workspace</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-semibold">Workspace</span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  // Trigger settings modal in UnifiedAgentInterface
+                                  const settingsBtn = document.getElementById('agent-settings-trigger');
+                                  settingsBtn?.click();
+                                }}
+                                className="h-6 w-6"
+                                title="Chat History Settings"
+                              >
+                                <Settings className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
                             <Button
                               variant="ghost"
                               size="icon"
