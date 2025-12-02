@@ -19,60 +19,84 @@ interface TaskRequest {
 }
 
 function parseAgentResponseText(rawText: string): any {
-  let text = rawText.trim();
+  const originalText = rawText.trim();
+  let text = originalText;
 
-  // Try to extract JSON from a ```json ... ``` fenced block if present
-  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fenceMatch && fenceMatch[1]) {
-    text = fenceMatch[1].trim();
-  } else {
-    // Strip stray markdown fences if present
-    text = text.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim();
-  }
+  console.log("Parsing agent response, length:", rawText.length);
+  console.log("Raw preview:", rawText.slice(0, 300) + (rawText.length > 300 ? "..." : ""));
 
-  try {
-    return JSON.parse(text);
-  } catch (primaryError) {
-    // NEW: Detect and fix "embedded JSON in reasoning" pattern
-    // Pattern: {"reasoning": "text...\",\"operations\":[...]}
-    const embeddedMatch = text.match(/"reasoning"\s*:\s*"([^"]*(?:\\.[^"]*)*)\\",\s*\\"operations\\"/);
-    if (embeddedMatch) {
-      console.log("Detected embedded JSON pattern, attempting fix...");
-      // Replace escaped quotes that should be actual JSON structure
-      const fixedText = text
-        .replace(/\\"/g, '"')
-        .replace(/"\s*}\s*$/, '"}'); // Fix trailing
-      try {
-        return JSON.parse(fixedText);
-      } catch (fixError) {
-        console.error("Embedded JSON fix failed:", fixError);
-      }
-    }
-
-    // Fallback: grab from first '{' to last '}' and try again
+  // Helper to try parsing safely
+  const tryParse = (jsonStr: string, method: string): any | null => {
     try {
-      const firstBrace = text.indexOf("{");
-      const lastBrace = text.lastIndexOf("}");
-      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-        const candidate = text.slice(firstBrace, lastBrace + 1);
-        return JSON.parse(candidate);
-      }
-      throw primaryError;
-    } catch (secondaryError) {
-      console.error("Unable to parse agent JSON response", {
-        primaryError,
-        secondaryError,
-        rawPreview: text.slice(0, 500),
-      });
+      const parsed = JSON.parse(jsonStr);
+      console.log(`JSON parsed successfully via ${method}`);
+      return parsed;
+    } catch (e) {
+      console.log(`JSON.parse failed in ${method}:`, (e as Error).message);
+      return null;
+    }
+  };
 
-      // Graceful fallback: treat whole response as reasoning-only
-      return {
-        reasoning: rawText,
-        operations: [],
-        status: "parse_error",
-      };
+  // Method 1: Direct parse (clean JSON)
+  let result = tryParse(text, "direct parse");
+  if (result) return result;
+
+  // Method 2: Extract from LAST ```json fence
+  const lastFenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```[\s\S]*$/i);
+  if (lastFenceMatch?.[1]) {
+    const extracted = lastFenceMatch[1].trim();
+    const cleaned = extracted
+      .replace(/^[\s\n]*here.?is.?the.?json.?[:\s]*/i, '')
+      .replace(/^[\s\n]*json[:\s]*/i, '')
+      .trim();
+    result = tryParse(cleaned, "last code fence");
+    if (result) return result;
+  }
+
+  // Method 3: Find ALL code blocks and try each one (in reverse order)
+  const allFences = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/gi)];
+  for (let i = allFences.length - 1; i >= 0; i--) {
+    const content = allFences[i][1].trim();
+    if (content) {
+      result = tryParse(content, `code fence #${i + 1} (reverse)`);
+      if (result) return result;
     }
   }
+
+  // Method 4: Brace matching on ORIGINAL text (most resilient)
+  const firstBrace = originalText.indexOf("{");
+  const lastBrace = originalText.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    const candidate = originalText.slice(firstBrace, lastBrace + 1);
+    
+    // Try raw first (preserves formatting)
+    result = tryParse(candidate, "brace extraction (raw)");
+    if (result) return result;
+
+    // Try with whitespace normalization
+    const cleaned = candidate
+      .replace(/[\r\n]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    result = tryParse(cleaned, "brace extraction (cleaned)");
+    if (result) return result;
+  }
+
+  // Method 5: Heuristic object match (last resort)
+  const heuristicMatch = originalText.match(/(\{(?:[^{}]|"(?:\\.|[^"\\])*")*\})/);
+  if (heuristicMatch) {
+    result = tryParse(heuristicMatch[1], "heuristic object match");
+    if (result) return result;
+  }
+
+  // Final fallback
+  console.error("All JSON parsing methods failed for response:", originalText.slice(0, 1000));
+  return {
+    reasoning: "Failed to parse agent response as JSON. Raw output preserved.",
+    raw_output: originalText.slice(0, 2000),
+    operations: [],
+    status: "parse_error"
+  };
 }
 
 serve(async (req) => {
