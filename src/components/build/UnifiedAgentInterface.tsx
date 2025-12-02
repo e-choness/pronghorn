@@ -29,6 +29,9 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Input } from '@/components/ui/input';
 
 interface UnifiedAgentInterfaceProps {
   projectId: string;
@@ -36,6 +39,13 @@ interface UnifiedAgentInterfaceProps {
   shareToken: string | null;
   attachedFiles: Array<{ id: string; path: string }>;
   onRemoveFile: (fileId: string) => void;
+  onOpenSettings?: () => void;
+}
+
+interface ChatHistorySettings {
+  includeHistory: boolean;
+  durationType: 'time' | 'messages';
+  durationValue: number; // minutes if 'time', message count if 'messages'
 }
 
 export function UnifiedAgentInterface({ 
@@ -43,7 +53,8 @@ export function UnifiedAgentInterface({
   repoId, 
   shareToken,
   attachedFiles,
-  onRemoveFile
+  onRemoveFile,
+  onOpenSettings
 }: UnifiedAgentInterfaceProps) {
   const { messages: loadedMessages, loading: messagesLoading, hasMore: hasMoreMessages, loadMore: loadMoreMessages, refetch: refetchMessages } = useInfiniteAgentMessages(projectId, shareToken);
   const { operations, loading: operationsLoading, hasMore: hasMoreOperations, loadMore: loadMoreOperations, refetch: refetchOperations } = useInfiniteAgentOperations(projectId, shareToken);
@@ -57,6 +68,14 @@ export function UnifiedAgentInterface({
   const [isProjectSelectorOpen, setIsProjectSelectorOpen] = useState(false);
   const [attachedContext, setAttachedContext] = useState<ProjectSelectionResult | null>(null);
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
+  
+  // Chat history settings state
+  const [chatHistorySettings, setChatHistorySettings] = useState<ChatHistorySettings>({
+    includeHistory: false,
+    durationType: 'time',
+    durationValue: 20, // Default 20 minutes
+  });
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
   const scrollViewportRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -151,6 +170,75 @@ export function UnifiedAgentInterface({
     };
   }, [operationsLoading, hasMoreOperations, loadMoreOperations]);
 
+  const retrieveChatHistory = async (): Promise<string> => {
+    if (!chatHistorySettings.includeHistory) return '';
+
+    try {
+      // Query agent_messages for this project via RPC to get recent chat history
+      const { data: sessions, error: sessionsError } = await supabase.rpc(
+        'get_agent_sessions_with_token',
+        {
+          p_project_id: projectId,
+          p_token: shareToken || null
+        }
+      );
+
+      if (sessionsError) throw sessionsError;
+      if (!sessions || sessions.length === 0) return '';
+
+      // Get all session IDs for this project
+      const sessionIds = sessions.map((s: any) => s.id);
+
+      // Build query for messages from these sessions
+      let query = supabase
+        .from('agent_messages')
+        .select('role, content, created_at')
+        .in('session_id', sessionIds)
+        .order('created_at', { ascending: false });
+
+      if (chatHistorySettings.durationType === 'time') {
+        // Filter by time (minutes)
+        const cutoffTime = new Date();
+        cutoffTime.setMinutes(cutoffTime.getMinutes() - chatHistorySettings.durationValue);
+        query = query.gte('created_at', cutoffTime.toISOString());
+      } else {
+        // Filter by message count
+        query = query.limit(chatHistorySettings.durationValue);
+      }
+
+      const { data: historyMessages, error } = await query;
+
+      if (error) throw error;
+
+      if (!historyMessages || historyMessages.length === 0) return '';
+
+      // Format chat history as text
+      const formattedHistory = historyMessages
+        .reverse() // Oldest first
+        .map((msg: any) => {
+          const timestamp = new Date(msg.created_at).toLocaleString();
+          if (msg.role === 'user') {
+            return `[${timestamp}] User: ${msg.content}`;
+          } else {
+            // Parse agent content if JSON
+            try {
+              const parsed = JSON.parse(msg.content);
+              return `[${timestamp}] Agent Reasoning: ${parsed.reasoning || msg.content}`;
+            } catch {
+              return `[${timestamp}] Agent: ${msg.content}`;
+            }
+          }
+        })
+        .join('\n\n');
+
+      return `\n\n--- RECENT CHAT HISTORY (Last ${chatHistorySettings.durationValue} ${chatHistorySettings.durationType === 'time' ? 'minutes' : 'messages'}) ---\n${formattedHistory}\n--- END CHAT HISTORY ---\n\n`;
+    } catch (error) {
+      console.error('Error retrieving chat history:', error);
+      toast.error('Failed to retrieve chat history');
+      return '';
+    }
+  };
+
   const handleSubmit = async () => {
     if (!taskInput.trim() || isSubmitting || !repoId) {
       if (!repoId) {
@@ -185,17 +273,24 @@ export function UnifiedAgentInterface({
       }
     }, 0);
 
-
     try {
+      // Retrieve chat history if enabled
+      const chatHistory = await retrieveChatHistory();
+
+      // Construct task description with history embedded
+      const taskDescriptionWithHistory = chatHistory 
+        ? `${userMessageContent}${chatHistory}`
+        : userMessageContent;
+
       const { error } = await supabase.functions.invoke('coding-agent-orchestrator', {
         body: {
           projectId,
           repoId,
           shareToken: shareToken || null,
-          taskDescription: userMessageContent,
-          mode: 'task', // Required parameter - can be 'task', 'iterative_loop', or 'continuous_improvement'
+          taskDescription: taskDescriptionWithHistory,
+          mode: 'task',
           autoCommit,
-          attachedFiles: attachedFiles, // Pass full objects with id and path
+          attachedFiles: attachedFiles,
           projectContext: attachedContext ? {
             projectMetadata: attachedContext.projectMetadata || null,
             artifacts: attachedContext.artifacts.length > 0 ? attachedContext.artifacts : undefined,
@@ -210,15 +305,14 @@ export function UnifiedAgentInterface({
 
       if (error) throw error;
 
-      toast.success('Agent task submitted');
+      toast.success('Agent task submitted' + (chatHistory ? ' with chat history context' : ''));
 
-      // Refresh messages and operations so the real user message and agent work replace optimistic one
+      // Refresh messages and operations
       refetchMessages();
       refetchOperations();
     } catch (error) {
       console.error('Error submitting task:', error);
       toast.error('Failed to submit task');
-      // Rollback optimistic update on error
       setMessages(previousMessages);
     } finally {
       setIsSubmitting(false);
@@ -487,6 +581,14 @@ export function UnifiedAgentInterface({
 
   return (
     <div className="flex flex-col h-full min-h-0">
+      {/* Hidden settings trigger button for external activation */}
+      <button 
+        id="agent-settings-trigger" 
+        onClick={() => setIsSettingsOpen(true)}
+        className="hidden"
+        aria-hidden="true"
+      />
+      
       {/* Timeline */}
       <div className="flex-1 min-h-0 overflow-hidden relative">
         <ScrollArea className="h-full" ref={scrollViewportRef}>
@@ -622,6 +724,99 @@ export function UnifiedAgentInterface({
         projectId={projectId}
         shareToken={shareToken}
       />
+
+      {/* Chat History Settings Dialog */}
+      <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Chat History Settings</DialogTitle>
+            <DialogDescription>
+              Configure how chat history is included as context when submitting tasks.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6 py-4">
+            {/* Include History Toggle */}
+            <div className="flex items-center gap-2">
+              <Checkbox 
+                id="include-history" 
+                checked={chatHistorySettings.includeHistory}
+                onCheckedChange={(checked) => 
+                  setChatHistorySettings(prev => ({ ...prev, includeHistory: checked as boolean }))
+                }
+              />
+              <Label htmlFor="include-history" className="text-sm font-medium">
+                Include recent chat history with task submissions
+              </Label>
+            </div>
+
+            {/* Duration Type Selection */}
+            {chatHistorySettings.includeHistory && (
+              <>
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">History Duration</Label>
+                  <RadioGroup
+                    value={chatHistorySettings.durationType}
+                    onValueChange={(value: 'time' | 'messages') =>
+                      setChatHistorySettings(prev => ({ ...prev, durationType: value }))
+                    }
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="time" id="time" />
+                      <Label htmlFor="time" className="font-normal cursor-pointer">
+                        Last N minutes
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="messages" id="messages" />
+                      <Label htmlFor="messages" className="font-normal cursor-pointer">
+                        Last N messages
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+
+                {/* Duration Value Input */}
+                <div className="space-y-2">
+                  <Label htmlFor="duration-value" className="text-sm font-medium">
+                    {chatHistorySettings.durationType === 'time' ? 'Minutes' : 'Message Count'}
+                  </Label>
+                  <Input
+                    id="duration-value"
+                    type="number"
+                    min="1"
+                    max={chatHistorySettings.durationType === 'time' ? 1440 : 1000}
+                    value={chatHistorySettings.durationValue}
+                    onChange={(e) =>
+                      setChatHistorySettings(prev => ({
+                        ...prev,
+                        durationValue: parseInt(e.target.value) || 1
+                      }))
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {chatHistorySettings.durationType === 'time'
+                      ? 'Include messages from the last N minutes (max 1440 = 24 hours)'
+                      : 'Include the last N reasoning messages (max 1000)'}
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setIsSettingsOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => {
+              setIsSettingsOpen(false);
+              toast.success('Chat history settings updated');
+            }}>
+              Save Settings
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
