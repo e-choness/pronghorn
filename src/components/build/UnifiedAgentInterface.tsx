@@ -678,23 +678,25 @@ export function UnifiedAgentInterface({
 
         {/* Task Input */}
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setIsProjectSelectorOpen(true)}
-            disabled={isSubmitting}
-          >
-            <Paperclip className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setIsSettingsOpen(true)}
-            disabled={isSubmitting}
-            title="Chat History Settings"
-          >
-            <Settings className="h-4 w-4" />
-          </Button>
+          <div className="flex flex-col gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setIsProjectSelectorOpen(true)}
+              disabled={isSubmitting}
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setIsSettingsOpen(true)}
+              disabled={isSubmitting}
+              title="Chat History Settings"
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
+          </div>
           <Textarea
             placeholder="Describe the task for the agent..."
             value={taskInput}
