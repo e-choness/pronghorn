@@ -76,6 +76,14 @@ export function CodeEditor({
   const [searchParams] = useSearchParams();
   const shareToken = searchParams.get("token");
 
+  // Dirty state tracking
+  const isDirty = content !== originalContent;
+  
+  // Debug: Log dirty state changes
+  useEffect(() => {
+    console.log("DIRTY STATE:", { isDirty, contentLen: content.length, originalLen: originalContent.length, filePath });
+  }, [isDirty, content, originalContent, filePath]);
+
   // Track previous file path to detect switches
   const previousFilePathRef = useRef<string | null>(null);
 
@@ -410,6 +418,10 @@ export function CodeEditor({
             <FileText className="h-4 w-4 text-[#cccccc] shrink-0" />
           )}
           <h3 className="text-sm font-normal truncate text-[#cccccc]">{filePath}</h3>
+          {/* Dirty indicator - yellow dot when file has unsaved changes */}
+          {isDirty && !isImage && (
+            <span className="h-2 w-2 rounded-full bg-yellow-500 shrink-0" title="Unsaved changes" />
+          )}
         </div>
         <div className="flex items-center gap-3">
           {!isImage && (
@@ -465,11 +477,11 @@ export function CodeEditor({
                 size="sm"
                 onClick={handleSave}
                 disabled={saving || loading}
-                variant="secondary"
-                className="h-8 gap-2"
+                variant={isDirty ? "default" : "secondary"}
+                className={`h-8 gap-2 ${isDirty ? "bg-yellow-600 hover:bg-yellow-700 text-white" : ""}`}
               >
                 <Save className="h-4 w-4" />
-                {saving ? "Saving..." : "Save"}
+                {saving ? "Saving..." : isDirty ? "Save*" : "Save"}
               </Button>
             )}
             <Button
