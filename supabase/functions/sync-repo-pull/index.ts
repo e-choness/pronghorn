@@ -207,9 +207,11 @@ Deno.serve(async (req) => {
             // Keep binary files as base64 encoded
             content = blobData.content.replace(/\n/g, '');
           } else {
-            // Decode text files to plain text
+            // Decode text files to plain text with proper UTF-8 handling
             try {
-              content = atob(blobData.content.replace(/\n/g, ''));
+              const base64Clean = blobData.content.replace(/\n/g, '');
+              const bytes = Uint8Array.from(atob(base64Clean), c => c.charCodeAt(0));
+              content = new TextDecoder('utf-8').decode(bytes);
             } catch (e) {
               // If decode fails, treat as binary
               console.log(`Treating ${file.path} as binary due to decode error`);
