@@ -342,7 +342,7 @@ export function CodeEditor({
                           handleShowDiffToggle(pressed);
                           if (pressed) setShowMarkdown(false);
                         }}
-                        className="h-8 px-2 data-[state=on]:bg-blue-600 data-[state=on]:text-white"
+                        className="h-8 px-2 border border-[#3e3e42] text-[#cccccc] hover:bg-[#3e3e42] hover:text-white data-[state=on]:bg-blue-600 data-[state=on]:text-white data-[state=on]:border-blue-600"
                       >
                         <GitCompare className="h-4 w-4" />
                       </Toggle>
@@ -363,7 +363,7 @@ export function CodeEditor({
                         setShowMarkdown(pressed);
                         if (pressed && showDiffMode) handleShowDiffToggle(false);
                       }}
-                      className="h-8 px-2 data-[state=on]:bg-green-600 data-[state=on]:text-white"
+                      className="h-8 px-2 border border-[#3e3e42] text-[#cccccc] hover:bg-[#3e3e42] hover:text-white data-[state=on]:bg-green-600 data-[state=on]:text-white data-[state=on]:border-green-600"
                     >
                       <Eye className="h-4 w-4" />
                     </Toggle>
