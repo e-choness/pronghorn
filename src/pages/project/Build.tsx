@@ -254,12 +254,17 @@ export default function Build() {
   const handleEditorSave = useCallback(() => {
     saveCurrentFile();
   }, [saveCurrentFile]);
+  // Refs for stable access in effects - prevents re-running effects on every keystroke
+  const saveAllDirtyRef = useRef(saveAllDirty);
+  const hasDirtyFilesRef = useRef(hasDirtyFiles);
+  saveAllDirtyRef.current = saveAllDirty;
+  hasDirtyFilesRef.current = hasDirtyFiles;
 
   // Beforeunload handler for tab/page close - save dirty files
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (hasDirtyFiles) {
-        saveAllDirty();
+      if (hasDirtyFilesRef.current) {
+        saveAllDirtyRef.current?.();
         e.preventDefault();
         e.returnValue = "Saving changes...";
         return e.returnValue;
@@ -268,14 +273,14 @@ export default function Build() {
 
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [hasDirtyFiles, saveAllDirty]);
+  }, []); // Empty deps - runs once, uses refs for latest values
 
-  // Cleanup: save dirty files when navigating away
+  // Cleanup: save dirty files when navigating away (component unmount only)
   useEffect(() => {
     return () => {
-      saveAllDirty();
+      saveAllDirtyRef.current?.();
     };
-  }, [saveAllDirty]);
+  }, []); // Empty deps - cleanup runs only on unmount
 
   // Instant file switching - no blocking
   const handleSelectFile = (fileId: string, path: string, isStaged?: boolean) => {
