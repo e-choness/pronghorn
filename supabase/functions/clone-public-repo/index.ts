@@ -125,8 +125,10 @@ Deno.serve(async (req) => {
         const contentData = await contentResponse.json();
         
         if (contentData.content) {
-          // Decode base64 content
-          const decodedContent = atob(contentData.content.replace(/\n/g, ''));
+          // Decode base64 content with proper UTF-8 handling
+          const base64Clean = contentData.content.replace(/\n/g, '');
+          const bytes = Uint8Array.from(atob(base64Clean), c => c.charCodeAt(0));
+          const decodedContent = new TextDecoder('utf-8').decode(bytes);
           fileContents.push({
             path: file.path,
             content: decodedContent,
