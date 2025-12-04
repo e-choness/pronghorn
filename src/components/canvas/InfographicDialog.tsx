@@ -221,7 +221,8 @@ export function InfographicDialog({ projectId, shareToken, open, onOpenChange }:
       selectedContent.techStacks.length +
       selectedContent.canvasNodes.length +
       selectedContent.canvasEdges.length +
-      selectedContent.canvasLayers.length
+      selectedContent.canvasLayers.length +
+      (selectedContent.files?.length || 0)
     );
   };
 

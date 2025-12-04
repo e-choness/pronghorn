@@ -642,7 +642,8 @@ export function UnifiedAgentInterface({
       (selection.requirements?.length || 0) +
       (selection.standards?.length || 0) +
       (selection.techStacks?.length || 0) +
-      (selection.canvasNodes?.length || 0);
+      (selection.canvasNodes?.length || 0) +
+      (selection.files?.length || 0);
     toast.success(`Attached ${count} context items`);
   };
 

@@ -433,6 +433,7 @@ export default function Chat() {
         canvasNodes: attachedContext.canvasNodes.length > 0 ? attachedContext.canvasNodes : undefined,
         canvasEdges: attachedContext.canvasEdges.length > 0 ? attachedContext.canvasEdges : undefined,
         canvasLayers: attachedContext.canvasLayers.length > 0 ? attachedContext.canvasLayers : undefined,
+        files: attachedContext.files?.length > 0 ? attachedContext.files : undefined,
       } : undefined;
 
       const response = await fetch(`https://obkzdksfayygnrzdqoam.supabase.co/functions/v1/${edgeFunctionName}`, {
@@ -981,6 +982,7 @@ export default function Chat() {
                               {attachedContext.canvasNodes.length > 0 && <p>✓ {attachedContext.canvasNodes.length} canvas nodes</p>}
                               {attachedContext.canvasEdges.length > 0 && <p>✓ {attachedContext.canvasEdges.length} canvas edges</p>}
                               {attachedContext.canvasLayers.length > 0 && <p>✓ {attachedContext.canvasLayers.length} canvas layers</p>}
+                              {attachedContext.files?.length > 0 && <p>✓ {attachedContext.files.length} repository files</p>}
                             </div>
                           </div>
                           <Button
