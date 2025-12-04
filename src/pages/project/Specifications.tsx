@@ -125,7 +125,8 @@ export default function Specifications() {
       selection.techStacks.length +
       selection.canvasNodes.length +
       selection.canvasEdges.length +
-      selection.canvasLayers.length
+      selection.canvasLayers.length +
+      (selection.files?.length || 0)
     );
   };
 
@@ -192,6 +193,9 @@ export default function Specifications() {
     }
     if (selectedContent.canvasLayers.length > 0) {
       contextParts.push(`# Canvas Layers\n${JSON.stringify(selectedContent.canvasLayers, null, 2)}`);
+    }
+    if (selectedContent.files && selectedContent.files.length > 0) {
+      contextParts.push(`# Repository Files\n${JSON.stringify(selectedContent.files, null, 2)}`);
     }
 
     return contextParts.join('\n\n');

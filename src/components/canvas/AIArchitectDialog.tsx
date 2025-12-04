@@ -77,7 +77,8 @@ export function AIArchitectDialog({
       selectedContext.techStacks.length > 0 ||
       selectedContext.canvasNodes.length > 0 ||
       selectedContext.canvasEdges.length > 0 ||
-      selectedContext.canvasLayers.length > 0
+      selectedContext.canvasLayers.length > 0 ||
+      (selectedContext.files?.length || 0) > 0
     );
     
     if (!hasDescription && !hasContext) {
@@ -264,6 +265,7 @@ export function AIArchitectDialog({
                       {selectedContext.canvasNodes.length > 0 && <p>✓ {selectedContext.canvasNodes.length} canvas nodes</p>}
                       {selectedContext.canvasEdges.length > 0 && <p>✓ {selectedContext.canvasEdges.length} canvas edges</p>}
                       {selectedContext.canvasLayers.length > 0 && <p>✓ {selectedContext.canvasLayers.length} canvas layers</p>}
+                      {selectedContext.files?.length > 0 && <p>✓ {selectedContext.files.length} repository files</p>}
                     </div>
                   )}
                 </div>
@@ -360,6 +362,7 @@ export function AIArchitectDialog({
                       {selectedContext.canvasNodes.length > 0 && <p>✓ {selectedContext.canvasNodes.length} canvas nodes</p>}
                       {selectedContext.canvasEdges.length > 0 && <p>✓ {selectedContext.canvasEdges.length} canvas edges</p>}
                       {selectedContext.canvasLayers.length > 0 && <p>✓ {selectedContext.canvasLayers.length} canvas layers</p>}
+                      {selectedContext.files?.length > 0 && <p>✓ {selectedContext.files.length} repository files</p>}
                     </div>
                   )}
                 </div>

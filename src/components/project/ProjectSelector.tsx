@@ -651,7 +651,7 @@ export function ProjectSelector({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className={isMobile ? "max-w-[95vw] w-full h-[90vh] p-0 m-0 flex flex-col" : "max-w-5xl max-h-[80vh] p-0 flex flex-col"}>
+      <DialogContent className={isMobile ? "max-w-[100vw] w-full h-[100vh] p-0 m-0 flex flex-col" : "max-w-[100vw] max-h-[100vh] w-[100vw] h-[100vh] p-0 flex flex-col"}>
         <DialogHeader className="px-3 md:px-6 pt-3 md:pt-6 pb-2 md:pb-4 shrink-0">
           <DialogTitle className="text-base md:text-lg">Select Project Elements</DialogTitle>
           <DialogDescription className="text-xs md:text-sm">
