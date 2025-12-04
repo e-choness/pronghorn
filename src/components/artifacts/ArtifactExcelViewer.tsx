@@ -462,33 +462,46 @@ export function ArtifactExcelViewer({
   const filteredRows = getFilteredRows();
   const currentSheetSelection = selectedRows.get(activeSheet) || new Set();
 
+  const handleCompactFileSelect = (files: File[]) => {
+    if (files.length > 0) {
+      loadExcelFile(files[0]);
+    }
+  };
+
   if (!excelData) {
     return (
-      <div
-        className={cn(
-          "flex-1 border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center gap-4 transition-colors",
-          isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25"
-        )}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        <FileSpreadsheet className="h-16 w-16 text-muted-foreground" />
-        <div className="text-center">
-          <p className="text-lg font-medium">Drop Excel file here</p>
-          <p className="text-sm text-muted-foreground">or click to browse</p>
+      <div className="flex flex-col gap-3 h-full min-h-0">
+        <div
+          className={cn(
+            "border-2 border-dashed rounded-lg p-3 flex items-center gap-4 transition-colors shrink-0",
+            isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25"
+          )}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          <FileSpreadsheet className="h-8 w-8 text-muted-foreground shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">Drop Excel file here or click to browse</p>
+            <p className="text-xs text-muted-foreground truncate">XLSX, XLS files</p>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            className="shrink-0"
+          >
+            <Upload className="h-3.5 w-3.5 mr-1.5" />
+            Select
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            onChange={handleFileSelect}
+          />
         </div>
-        <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-          <Upload className="h-4 w-4 mr-2" />
-          Select File
-        </Button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".xlsx,.xls"
-          className="hidden"
-          onChange={handleFileSelect}
-        />
       </div>
     );
   }

@@ -1,11 +1,10 @@
-import React, { useState, useCallback } from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Textarea } from "@/components/ui/textarea";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Upload, X, FileText, ChevronDown, ChevronRight, CheckSquare, Square } from "lucide-react";
+import { FileText, ChevronDown, ChevronRight, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CompactDropZone } from "./CompactDropZone";
 
 export interface TextFile {
   id: string;
@@ -20,46 +19,35 @@ interface ArtifactTextFileListProps {
   onFilesChange: (files: TextFile[]) => void;
 }
 
-const TEXT_EXTENSIONS = [
-  '.txt', '.md', '.json', '.js', '.ts', '.jsx', '.tsx', '.py', '.rb', '.go',
-  '.java', '.c', '.cpp', '.h', '.hpp', '.cs', '.php', '.html', '.css', '.scss',
-  '.less', '.xml', '.yaml', '.yml', '.toml', '.ini', '.conf', '.cfg', '.env',
-  '.sh', '.bash', '.zsh', '.sql', '.graphql', '.vue', '.svelte', '.rs', '.swift',
-  '.kt', '.scala', '.r', '.m', '.pl', '.lua', '.ex', '.exs', '.elm', '.hs',
-];
+const TEXT_EXTENSIONS = [".txt", ".md", ".json", ".xml", ".csv", ".yaml", ".yml", ".js", ".ts", ".jsx", ".tsx", ".html", ".css", ".py", ".rb", ".java", ".c", ".cpp", ".h", ".sh", ".bash", ".sql", ".log", ".env", ".gitignore"];
 
 export function ArtifactTextFileList({ files, onFilesChange }: ArtifactTextFileListProps) {
   const [isDragging, setIsDragging] = useState(false);
 
-  const isTextFile = (file: File): boolean => {
-    const name = file.name.toLowerCase();
-    return TEXT_EXTENSIONS.some(ext => name.endsWith(ext)) || file.type.startsWith('text/');
+  const handleDragOver = () => {
+    setIsDragging(true);
   };
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
+  const handleDragLeave = () => {
     setIsDragging(false);
-  }, []);
+  };
 
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
+  const handleDrop = async (e: React.DragEvent) => {
     setIsDragging(false);
-    
-    const droppedFiles = Array.from(e.dataTransfer.files).filter(isTextFile);
+    const droppedFiles = Array.from(e.dataTransfer.files).filter(f => 
+      TEXT_EXTENSIONS.some(ext => f.name.toLowerCase().endsWith(ext)) || 
+      f.type.startsWith("text/")
+    );
     await addFiles(droppedFiles);
-  }, [files, onFilesChange]);
+  };
 
-  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const selectedFiles = Array.from(e.target.files).filter(isTextFile);
-      await addFiles(selectedFiles);
-    }
-  }, [files, onFilesChange]);
+  const handleFileSelect = async (selectedFiles: File[]) => {
+    const textFiles = selectedFiles.filter(f => 
+      TEXT_EXTENSIONS.some(ext => f.name.toLowerCase().endsWith(ext)) || 
+      f.type.startsWith("text/")
+    );
+    await addFiles(textFiles);
+  };
 
   const addFiles = async (newFiles: File[]) => {
     const textFiles: TextFile[] = await Promise.all(
@@ -75,21 +63,19 @@ export function ArtifactTextFileList({ files, onFilesChange }: ArtifactTextFileL
   };
 
   const toggleSelection = (id: string) => {
-    onFilesChange(files.map(f => 
-      f.id === id ? { ...f, selected: !f.selected } : f
-    ));
+    onFilesChange(
+      files.map(f => 
+        f.id === id ? { ...f, selected: !f.selected } : f
+      )
+    );
   };
 
   const toggleExpanded = (id: string) => {
-    onFilesChange(files.map(f => 
-      f.id === id ? { ...f, expanded: !f.expanded } : f
-    ));
-  };
-
-  const updateContent = (id: string, content: string) => {
-    onFilesChange(files.map(f => 
-      f.id === id ? { ...f, content } : f
-    ));
+    onFilesChange(
+      files.map(f => 
+        f.id === id ? { ...f, expanded: !f.expanded } : f
+      )
+    );
   };
 
   const removeFile = (id: string) => {
@@ -108,132 +94,94 @@ export function ArtifactTextFileList({ files, onFilesChange }: ArtifactTextFileL
     onFilesChange([]);
   };
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
   const selectedCount = files.filter(f => f.selected).length;
+  const acceptExtensions = TEXT_EXTENSIONS.join(",");
 
   return (
-    <div className="flex flex-col h-full gap-4">
-      {/* Drop Zone - Matching Excel style */}
-      <div
-        className={cn(
-          "flex-1 border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center gap-4 transition-colors min-h-[200px] max-h-[250px]",
-          isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25"
-        )}
+    <div className="flex flex-col gap-3 h-full min-h-0">
+      <CompactDropZone
+        icon={FileText}
+        label="Drop text files here or click to browse"
+        buttonText="Select"
+        acceptText="TXT, MD, JSON, CSV, XML, YAML, code files"
+        accept={acceptExtensions}
+        onFilesSelected={handleFileSelect}
+        isDragging={isDragging}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-      >
-        <FileText className="h-16 w-16 text-muted-foreground" />
-        <div className="text-center">
-          <p className="text-lg font-medium">Drop text files here</p>
-          <p className="text-sm text-muted-foreground">or click to browse</p>
-        </div>
-        <Button variant="outline" onClick={() => document.getElementById('text-file-input')?.click()}>
-          <Upload className="h-4 w-4 mr-2" />
-          Select Files
-        </Button>
-        <p className="text-xs text-muted-foreground">
-          Supports TXT, MD, JSON, JS, TS, PY, and more
-        </p>
-        <input
-          id="text-file-input"
-          type="file"
-          accept={TEXT_EXTENSIONS.join(',')}
-          multiple
-          className="hidden"
-          onChange={handleFileSelect}
-        />
-      </div>
+      />
 
-      {/* Actions */}
       {files.length > 0 && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={selectAll}>
-            <CheckSquare className="h-4 w-4 mr-1" />
-            Select All
-          </Button>
-          <Button variant="outline" size="sm" onClick={selectNone}>
-            <Square className="h-4 w-4 mr-1" />
-            Select None
-          </Button>
-          <Button variant="outline" size="sm" onClick={clearAll}>
-            <X className="h-4 w-4 mr-1" />
-            Clear All
-          </Button>
-          <span className="text-sm text-muted-foreground ml-auto">
-            {selectedCount} of {files.length} selected
-          </span>
-        </div>
-      )}
-
-      {/* File List */}
-      <ScrollArea className="flex-1">
-        {files.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
-            <FileText className="h-12 w-12 mb-2 opacity-50" />
-            <p className="text-sm">No text files added yet</p>
+        <>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button variant="outline" size="sm" onClick={selectAll}>
+              Select All
+            </Button>
+            <Button variant="outline" size="sm" onClick={selectNone}>
+              Select None
+            </Button>
+            <Button variant="outline" size="sm" onClick={clearAll}>
+              Clear All
+            </Button>
+            <span className="text-sm text-muted-foreground ml-auto">
+              {selectedCount} of {files.length} selected
+            </span>
           </div>
-        ) : (
-          <div className="space-y-2 p-1">
-            {files.map(file => (
-              <Collapsible
-                key={file.id}
-                open={file.expanded}
-                onOpenChange={() => toggleExpanded(file.id)}
-              >
-                <div className={cn(
-                  "border rounded-lg transition-colors",
-                  file.selected ? "border-primary" : "border-border"
-                )}>
-                  <div className="flex items-center gap-2 p-3">
+
+          <ScrollArea className="flex-1 min-h-0">
+            <div className="space-y-2 p-1">
+              {files.map(file => (
+                <div
+                  key={file.id}
+                  className={cn(
+                    "border rounded-lg overflow-hidden transition-colors",
+                    file.selected ? "border-primary" : "border-border"
+                  )}
+                >
+                  <div className="flex items-center gap-2 p-2 bg-muted/50">
                     <Checkbox
                       checked={file.selected}
                       onCheckedChange={() => toggleSelection(file.id)}
                     />
-                    <CollapsibleTrigger className="flex items-center gap-2 flex-1 hover:bg-accent/50 rounded p-1 -m-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                      onClick={() => toggleExpanded(file.id)}
+                    >
                       {file.expanded ? (
                         <ChevronDown className="h-4 w-4" />
                       ) : (
                         <ChevronRight className="h-4 w-4" />
                       )}
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      <span className="font-medium text-sm truncate flex-1 text-left">
-                        {file.file.name}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {formatFileSize(file.file.size)}
-                      </span>
-                    </CollapsibleTrigger>
+                    </Button>
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                    <span className="flex-1 text-sm truncate">{file.file.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {(file.file.size / 1024).toFixed(1)} KB
+                    </span>
                     <Button
                       variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
+                      size="sm"
+                      className="h-6 w-6 p-0 text-destructive hover:text-destructive"
                       onClick={() => removeFile(file.id)}
                     >
-                      <X className="h-3 w-3" />
+                      <X className="h-4 w-4" />
                     </Button>
                   </div>
-                  <CollapsibleContent>
-                    <div className="px-3 pb-3">
-                      <Textarea
-                        value={file.content}
-                        onChange={(e) => updateContent(file.id, e.target.value)}
-                        className="font-mono text-xs min-h-[200px]"
-                        placeholder="File content..."
-                      />
-                    </div>
-                  </CollapsibleContent>
+                  {file.expanded && (
+                    <pre className="p-3 text-xs bg-muted/30 max-h-48 overflow-auto font-mono whitespace-pre-wrap">
+                      {file.content.slice(0, 5000)}
+                      {file.content.length > 5000 && "..."}
+                    </pre>
+                  )}
                 </div>
-              </Collapsible>
-            ))}
-          </div>
-        )}
-      </ScrollArea>
+              ))}
+            </div>
+          </ScrollArea>
+        </>
+      )}
     </div>
   );
 }
