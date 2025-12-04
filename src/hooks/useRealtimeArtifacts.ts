@@ -24,6 +24,7 @@ export const useRealtimeArtifacts = (
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const pendingDeletionsRef = useRef<Set<string>>(new Set());
 
   const loadArtifacts = async () => {
     if (!projectId || !enabled) return;
@@ -35,7 +36,12 @@ export const useRealtimeArtifacts = (
       });
 
       if (error) throw error;
-      setArtifacts(data || []);
+      
+      // Filter out any artifacts that are pending deletion
+      const filteredData = (data || []).filter(
+        (artifact: Artifact) => !pendingDeletionsRef.current.has(artifact.id)
+      );
+      setArtifacts(filteredData);
     } catch (error) {
       console.error("Error loading artifacts:", error);
       toast.error("Failed to load artifacts");
@@ -61,11 +67,30 @@ export const useRealtimeArtifacts = (
         },
         (payload) => {
           console.log("Artifacts postgres_changes:", payload);
+          
+          // Skip reload if this is a delete we initiated
+          if (payload.eventType === 'DELETE') {
+            const deletedId = (payload.old as { id?: string })?.id;
+            if (deletedId && pendingDeletionsRef.current.has(deletedId)) {
+              pendingDeletionsRef.current.delete(deletedId);
+              return; // Don't reload, we already removed it optimistically
+            }
+          }
+          
           loadArtifacts();
         }
       )
       .on("broadcast", { event: "artifact_refresh" }, (payload) => {
         console.log("Received artifacts refresh broadcast:", payload);
+        
+        // Skip if this is a delete broadcast for something we're deleting
+        if (payload.payload?.action === 'delete') {
+          const deletedId = payload.payload?.id;
+          if (deletedId && pendingDeletionsRef.current.has(deletedId)) {
+            return; // Don't reload
+          }
+        }
+        
         loadArtifacts();
       })
       .subscribe((status) => {
@@ -202,6 +227,10 @@ export const useRealtimeArtifacts = (
     const originalArtifacts = artifacts;
 
     try {
+      // Mark as pending deletion BEFORE removing from UI
+      pendingDeletionsRef.current.add(id);
+      
+      // Optimistically remove from UI
       setArtifacts((prev) => prev.filter((artifact) => artifact.id !== id));
 
       const { error } = await supabase.rpc("delete_artifact_with_token", {
@@ -222,6 +251,8 @@ export const useRealtimeArtifacts = (
       
       toast.success("Artifact deleted successfully");
     } catch (error) {
+      // Remove from pending on error
+      pendingDeletionsRef.current.delete(id);
       setArtifacts(originalArtifacts);
       console.error("Error deleting artifact:", error);
       toast.error("Failed to delete artifact");

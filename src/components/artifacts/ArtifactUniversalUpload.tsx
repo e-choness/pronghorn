@@ -1,23 +1,12 @@
-import React, { useState, useCallback } from "react";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
-import { 
-  Upload, 
-  FolderOpen, 
-  Image, 
-  FileSpreadsheet, 
-  FileText, 
-  FileIcon,
-  Presentation,
-  Check
-} from "lucide-react";
+import React, { useState } from "react";
+import { Upload, Image, FileSpreadsheet, FileText, FileIcon, Presentation, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CompactDropZone } from "./CompactDropZone";
 
 interface FileCategory {
   type: string;
   label: string;
-  icon: React.ReactNode;
+  icon: React.ElementType;
   count: number;
   color: string;
 }
@@ -39,36 +28,30 @@ interface ArtifactUniversalUploadProps {
   };
 }
 
-const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
-const EXCEL_EXTENSIONS = ['.xlsx', '.xls'];
-const TEXT_EXTENSIONS = [
-  '.txt', '.md', '.json', '.js', '.ts', '.jsx', '.tsx', '.py', '.rb', '.go',
-  '.java', '.c', '.cpp', '.h', '.hpp', '.cs', '.php', '.html', '.css', '.scss',
-  '.less', '.xml', '.yaml', '.yml', '.toml', '.ini', '.conf', '.cfg', '.env',
-  '.sh', '.bash', '.zsh', '.sql', '.graphql', '.vue', '.svelte', '.rs', '.swift',
-  '.kt', '.scala', '.r', '.m', '.pl', '.lua', '.ex', '.exs', '.elm', '.hs',
-];
-const DOCX_EXTENSIONS = ['.docx', '.doc'];
-const PDF_EXTENSIONS = ['.pdf'];
-const PPTX_EXTENSIONS = ['.pptx', '.ppt'];
+const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"];
+const EXCEL_EXTENSIONS = [".xlsx", ".xls"];
+const TEXT_EXTENSIONS = [".txt", ".md", ".json", ".xml", ".csv", ".yaml", ".yml", ".js", ".ts", ".jsx", ".tsx", ".html", ".css", ".py", ".rb", ".java", ".c", ".cpp", ".h", ".sh", ".bash", ".sql", ".log", ".env", ".gitignore"];
+const DOCX_EXTENSIONS = [".docx", ".doc"];
+const PDF_EXTENSIONS = [".pdf"];
+const PPTX_EXTENSIONS = [".pptx", ".ppt"];
 
-function getFileExtension(filename: string): string {
-  const lastDot = filename.lastIndexOf('.');
-  return lastDot >= 0 ? filename.slice(lastDot).toLowerCase() : '';
-}
+const getFileExtension = (filename: string): string => {
+  const idx = filename.lastIndexOf(".");
+  return idx !== -1 ? filename.slice(idx).toLowerCase() : "";
+};
 
-function categorizeFile(file: File): string | null {
+const categorizeFile = (file: File): string | null => {
   const ext = getFileExtension(file.name);
   
-  if (IMAGE_EXTENSIONS.includes(ext) || file.type.startsWith('image/')) return 'image';
-  if (EXCEL_EXTENSIONS.includes(ext)) return 'excel';
-  if (TEXT_EXTENSIONS.includes(ext) || file.type.startsWith('text/')) return 'text';
-  if (DOCX_EXTENSIONS.includes(ext)) return 'docx';
-  if (PDF_EXTENSIONS.includes(ext)) return 'pdf';
-  if (PPTX_EXTENSIONS.includes(ext)) return 'pptx';
+  if (IMAGE_EXTENSIONS.includes(ext) || file.type.startsWith("image/")) return "image";
+  if (EXCEL_EXTENSIONS.includes(ext)) return "excel";
+  if (TEXT_EXTENSIONS.includes(ext) || file.type.startsWith("text/")) return "text";
+  if (DOCX_EXTENSIONS.includes(ext)) return "docx";
+  if (PDF_EXTENSIONS.includes(ext)) return "pdf";
+  if (PPTX_EXTENSIONS.includes(ext)) return "pptx";
   
   return null;
-}
+};
 
 export function ArtifactUniversalUpload({
   onImagesAdded,
@@ -80,175 +63,134 @@ export function ArtifactUniversalUpload({
   counts,
 }: ArtifactUniversalUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
-  const [recentUpload, setRecentUpload] = useState<{ total: number; categories: Record<string, number> } | null>(null);
+  const [recentUpload, setRecentUpload] = useState<{ images: number; excel: number; text: number; docx: number; pdf: number; pptx: number } | null>(null);
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
+  const handleDragOver = () => {
     setIsDragging(true);
-  }, []);
+  };
 
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
+  const handleDragLeave = () => {
     setIsDragging(false);
-  }, []);
+  };
 
-  const processFiles = useCallback((files: File[]) => {
-    const categorized: Record<string, File[]> = {
-      image: [],
-      excel: [],
-      text: [],
-      docx: [],
-      pdf: [],
-      pptx: [],
-    };
-
-    files.forEach(file => {
-      const category = categorizeFile(file);
-      if (category && categorized[category]) {
-        categorized[category].push(file);
-      }
-    });
-
-    // Distribute to appropriate handlers
-    if (categorized.image.length > 0) {
-      onImagesAdded(categorized.image);
-    }
-    if (categorized.excel.length > 0) {
-      // Only pass the first Excel file (the viewer handles one at a time)
-      onExcelAdded(categorized.excel[0]);
-    }
-    if (categorized.text.length > 0) {
-      onTextFilesAdded(categorized.text);
-    }
-    if (categorized.docx.length > 0) {
-      onDocxFilesAdded(categorized.docx);
-    }
-    if (categorized.pdf.length > 0) {
-      onPdfFilesAdded(categorized.pdf);
-    }
-    if (categorized.pptx.length > 0) {
-      onPptxFilesAdded(categorized.pptx);
-    }
-
-    // Show upload summary
-    const uploadSummary: Record<string, number> = {};
-    let total = 0;
-    Object.entries(categorized).forEach(([cat, catFiles]) => {
-      if (catFiles.length > 0) {
-        uploadSummary[cat] = catFiles.length;
-        total += catFiles.length;
-      }
-    });
-    
-    if (total > 0) {
-      setRecentUpload({ total, categories: uploadSummary });
-      setTimeout(() => setRecentUpload(null), 3000);
-    }
-  }, [onImagesAdded, onExcelAdded, onTextFilesAdded, onDocxFilesAdded, onPdfFilesAdded, onPptxFilesAdded]);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
+  const handleDrop = (e: React.DragEvent) => {
     setIsDragging(false);
     const files = Array.from(e.dataTransfer.files);
     processFiles(files);
-  }, [processFiles]);
+  };
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const files = Array.from(e.target.files);
-      processFiles(files);
-      e.target.value = ''; // Reset input
+  const handleFileSelect = (files: File[]) => {
+    processFiles(files);
+  };
+
+  const processFiles = (files: File[]) => {
+    const images: File[] = [];
+    const excel: File[] = [];
+    const text: File[] = [];
+    const docx: File[] = [];
+    const pdf: File[] = [];
+    const pptx: File[] = [];
+
+    files.forEach(file => {
+      const category = categorizeFile(file);
+      switch (category) {
+        case "image": images.push(file); break;
+        case "excel": excel.push(file); break;
+        case "text": text.push(file); break;
+        case "docx": docx.push(file); break;
+        case "pdf": pdf.push(file); break;
+        case "pptx": pptx.push(file); break;
+      }
+    });
+
+    if (images.length > 0) onImagesAdded(images);
+    if (excel.length > 0) onExcelAdded(excel[0]);
+    if (text.length > 0) onTextFilesAdded(text);
+    if (docx.length > 0) onDocxFilesAdded(docx);
+    if (pdf.length > 0) onPdfFilesAdded(pdf);
+    if (pptx.length > 0) onPptxFilesAdded(pptx);
+
+    const uploadSummary = {
+      images: images.length,
+      excel: excel.length,
+      text: text.length,
+      docx: docx.length,
+      pdf: pdf.length,
+      pptx: pptx.length,
+    };
+    
+    if (Object.values(uploadSummary).some(v => v > 0)) {
+      setRecentUpload(uploadSummary);
+      setTimeout(() => setRecentUpload(null), 3000);
     }
-  }, [processFiles]);
+  };
 
   const categories: FileCategory[] = [
-    { type: 'images', label: 'Images', icon: <Image className="h-4 w-4" />, count: counts.images, color: 'bg-blue-500' },
-    { type: 'excel', label: 'Excel', icon: <FileSpreadsheet className="h-4 w-4" />, count: counts.excel, color: 'bg-green-500' },
-    { type: 'textFiles', label: 'Text Files', icon: <FileText className="h-4 w-4" />, count: counts.textFiles, color: 'bg-yellow-500' },
-    { type: 'docx', label: 'Word', icon: <FileText className="h-4 w-4" />, count: counts.docx, color: 'bg-blue-600' },
-    { type: 'pdf', label: 'PDF', icon: <FileIcon className="h-4 w-4" />, count: counts.pdf, color: 'bg-red-500' },
-    { type: 'pptx', label: 'PowerPoint', icon: <Presentation className="h-4 w-4" />, count: counts.pptx, color: 'bg-orange-500' },
+    { type: "images", label: "Images", icon: Image, count: counts.images, color: "text-blue-500" },
+    { type: "excel", label: "Excel", icon: FileSpreadsheet, count: counts.excel, color: "text-green-500" },
+    { type: "textFiles", label: "Text Files", icon: FileText, count: counts.textFiles, color: "text-yellow-500" },
+    { type: "docx", label: "Word", icon: FileText, count: counts.docx, color: "text-blue-600" },
+    { type: "pdf", label: "PDF", icon: FileIcon, count: counts.pdf, color: "text-red-500" },
+    { type: "pptx", label: "PowerPoint", icon: Presentation, count: counts.pptx, color: "text-orange-500" },
   ];
 
-  const totalFiles = Object.values(counts).reduce((sum, c) => sum + c, 0);
-
   return (
-    <div className="flex flex-col h-full gap-4">
-      {/* Drop Zone */}
-      <div
-        className={cn(
-          "flex-1 border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center gap-4 transition-colors min-h-[300px]",
-          isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25"
-        )}
+    <div className="flex flex-col gap-4 h-full min-h-0">
+      <CompactDropZone
+        icon={Upload}
+        label="Drop any files here - they'll be sorted automatically"
+        buttonText="Browse"
+        acceptText="Images, Excel, Text, Word, PDF, PowerPoint"
+        accept="*/*"
+        onFilesSelected={handleFileSelect}
+        isDragging={isDragging}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-      >
-        <FolderOpen className="h-16 w-16 text-muted-foreground" />
-        <div className="text-center">
-          <p className="text-lg font-medium">Drop any files here</p>
-          <p className="text-sm text-muted-foreground">or click to browse your project folder</p>
-        </div>
-        <Button variant="outline" onClick={() => document.getElementById('universal-file-input')?.click()}>
-          <Upload className="h-4 w-4 mr-2" />
-          Select Files
-        </Button>
-        <p className="text-xs text-muted-foreground text-center max-w-md">
-          Supports Images, Excel, Text Files, Word, PDF, and PowerPoint.
-          Files are automatically sorted into their categories.
-        </p>
-        <input
-          id="universal-file-input"
-          type="file"
-          multiple
-          className="hidden"
-          onChange={handleFileSelect}
-        />
-      </div>
+      />
 
-      {/* Recent Upload Notification */}
       {recentUpload && (
-        <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 flex items-center gap-2">
-          <Check className="h-5 w-5 text-green-500" />
-          <span className="text-sm">
-            Added {recentUpload.total} file{recentUpload.total !== 1 ? 's' : ''} to categories
+        <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 flex items-center gap-2 animate-in fade-in slide-in-from-top-2 shrink-0">
+          <Check className="h-4 w-4 text-green-500 shrink-0" />
+          <span className="text-sm text-green-700 dark:text-green-400">
+            Added: {[
+              recentUpload.images > 0 && `${recentUpload.images} image${recentUpload.images !== 1 ? 's' : ''}`,
+              recentUpload.excel > 0 && `${recentUpload.excel} excel`,
+              recentUpload.text > 0 && `${recentUpload.text} text`,
+              recentUpload.docx > 0 && `${recentUpload.docx} word`,
+              recentUpload.pdf > 0 && `${recentUpload.pdf} pdf`,
+              recentUpload.pptx > 0 && `${recentUpload.pptx} pptx`,
+            ].filter(Boolean).join(", ")}
           </span>
         </div>
       )}
 
-      {/* Category Summary */}
-      {totalFiles > 0 && (
-        <div className="border rounded-lg p-4">
-          <h4 className="text-sm font-medium mb-3">Files by Category</h4>
-          <ScrollArea className="max-h-[200px]">
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {categories.map(cat => (
-                <div
-                  key={cat.type}
-                  className={cn(
-                    "flex items-center gap-2 p-2 rounded-lg border",
-                    cat.count > 0 ? "bg-accent/50" : "opacity-50"
-                  )}
-                >
-                  {cat.icon}
-                  <span className="text-sm flex-1">{cat.label}</span>
-                  {cat.count > 0 && (
-                    <Badge variant="secondary" className="h-5 px-1.5">
-                      {cat.count}
-                    </Badge>
-                  )}
-                </div>
-              ))}
-            </div>
-          </ScrollArea>
-        </div>
-      )}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 shrink-0">
+        {categories.map(cat => (
+          <div
+            key={cat.type}
+            className={cn(
+              "border rounded-lg p-4 flex flex-col items-center gap-2 transition-colors",
+              cat.count > 0 ? "border-primary/50 bg-primary/5" : "border-border"
+            )}
+          >
+            <cat.icon className={cn("h-8 w-8", cat.count > 0 ? cat.color : "text-muted-foreground")} />
+            <span className="text-sm font-medium">{cat.label}</span>
+            <span className={cn(
+              "text-2xl font-bold",
+              cat.count > 0 ? "text-foreground" : "text-muted-foreground"
+            )}>
+              {cat.count}
+            </span>
+          </div>
+        ))}
+      </div>
 
-      {totalFiles === 0 && (
-        <div className="text-center text-sm text-muted-foreground py-4">
-          <p>No files uploaded yet. Drop files above to get started.</p>
-        </div>
-      )}
+      <p className="text-sm text-muted-foreground text-center mt-auto shrink-0">
+        Files are automatically sorted into their respective categories.
+        <br />
+        Switch to individual tabs to review and select specific items.
+      </p>
     </div>
   );
 }
