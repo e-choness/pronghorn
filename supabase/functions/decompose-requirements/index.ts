@@ -15,7 +15,7 @@ serve(async (req) => {
     const body = await req.json();
     console.log("Received request body:", JSON.stringify(body));
     
-    const { text, projectId, shareToken } = body;
+    const { text, projectId, shareToken, attachedContext } = body;
     
     if (!text || !projectId) {
       console.error("Missing parameters - text:", !!text, "projectId:", !!projectId);
@@ -60,6 +60,88 @@ serve(async (req) => {
     console.log("Decomposing requirements for project:", projectId);
     console.log("Input text length:", text.length);
 
+    // Build context string from attached context
+    let contextString = '';
+    
+    if (attachedContext) {
+      if (attachedContext.projectMetadata) {
+        const pm = attachedContext.projectMetadata;
+        contextString += `PROJECT METADATA:\n`;
+        contextString += `- Name: ${pm.name || 'N/A'}\n`;
+        contextString += `- Description: ${pm.description || 'N/A'}\n`;
+        contextString += `- Status: ${pm.status || 'N/A'}\n`;
+        contextString += `- Priority: ${pm.priority || 'N/A'}\n`;
+        contextString += `- Scope: ${pm.scope || 'N/A'}\n\n`;
+      }
+      
+      if (attachedContext.requirements?.length > 0) {
+        contextString += `EXISTING REQUIREMENTS (${attachedContext.requirements.length}):\n`;
+        attachedContext.requirements.forEach((r: any) => {
+          contextString += `- [${r.type || 'REQ'}] ${r.code || ''} ${r.title}\n`;
+          if (r.content) contextString += `  ${r.content.substring(0, 200)}${r.content.length > 200 ? '...' : ''}\n`;
+        });
+        contextString += '\n';
+      }
+      
+      if (attachedContext.standards?.length > 0) {
+        contextString += `LINKED STANDARDS (${attachedContext.standards.length}):\n`;
+        attachedContext.standards.forEach((s: any) => {
+          contextString += `- ${s.code || ''} ${s.title}: ${s.description || ''}\n`;
+        });
+        contextString += '\n';
+      }
+      
+      if (attachedContext.techStacks?.length > 0) {
+        contextString += `TECH STACKS (${attachedContext.techStacks.length}):\n`;
+        attachedContext.techStacks.forEach((t: any) => {
+          contextString += `- ${t.name}${t.type ? ` (${t.type})` : ''}: ${t.description || ''}\n`;
+        });
+        contextString += '\n';
+      }
+      
+      if (attachedContext.artifacts?.length > 0) {
+        contextString += `ARTIFACTS (${attachedContext.artifacts.length}):\n`;
+        attachedContext.artifacts.forEach((a: any) => {
+          contextString += `--- ${a.ai_title || a.title || 'Artifact'} ---\n`;
+          contextString += `${a.content?.substring(0, 500)}${a.content?.length > 500 ? '...' : ''}\n\n`;
+        });
+      }
+      
+      if (attachedContext.canvasNodes?.length > 0) {
+        contextString += `CANVAS ARCHITECTURE (${attachedContext.canvasNodes.length} nodes):\n`;
+        attachedContext.canvasNodes.forEach((n: any) => {
+          const data = n.data || {};
+          contextString += `- [${n.type}] ${data.label || data.title || 'Node'}\n`;
+          if (data.description) contextString += `  ${data.description.substring(0, 100)}...\n`;
+        });
+        contextString += '\n';
+      }
+      
+      if (attachedContext.chatSessions?.length > 0) {
+        contextString += `CHAT SESSIONS (${attachedContext.chatSessions.length}):\n`;
+        attachedContext.chatSessions.forEach((c: any) => {
+          contextString += `- ${c.ai_title || c.title || 'Chat'}\n`;
+          if (c.ai_summary) contextString += `  Summary: ${c.ai_summary.substring(0, 200)}...\n`;
+        });
+        contextString += '\n';
+      }
+      
+      if (attachedContext.files?.length > 0) {
+        contextString += `REPOSITORY FILES (${attachedContext.files.length}):\n`;
+        attachedContext.files.forEach((f: any) => {
+          contextString += `--- ${f.path} ---\n`;
+          contextString += `${f.content?.substring(0, 300)}${f.content?.length > 300 ? '...' : ''}\n\n`;
+        });
+      }
+    }
+
+    console.log("Context string length:", contextString.length);
+
+    // Build user message with optional context
+    const userMessage = contextString 
+      ? `Use this project context to inform your decomposition and ensure requirements align with existing project elements:\n\n${contextString}\n\nNow decompose the following text into structured requirements:\n\n${text}`
+      : `Decompose the following text into structured requirements:\n\n${text}`;
+
     // Call Lovable AI to decompose the requirements
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -83,7 +165,8 @@ Rules:
 4. Break Stories into Acceptance Criteria (testable conditions)
 5. Use clear, concise titles
 6. Each level should have 2-5 children (avoid single children)
-7. Return ONLY valid JSON, no markdown or additional text
+7. If project context is provided, align requirements with existing standards, tech stack, and architecture
+8. Return ONLY valid JSON, no markdown or additional text
 
 Return format:
 {
@@ -115,7 +198,7 @@ Return format:
           },
           {
             role: "user",
-            content: `Decompose the following text into structured requirements:\n\n${text}`
+            content: userMessage
           }
         ],
         temperature: 0.7,
