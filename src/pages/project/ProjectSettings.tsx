@@ -148,7 +148,7 @@ export default function ProjectSettings() {
       return;
     }
 
-    const url = `https://pronghorn.red/project/${projectId}/requirements?token=${token}`;
+    const url = `https://pronghorn.red/project/${projectId}/requirements/t/${token}`;
     navigator.clipboard.writeText(url);
     toast.success("Share link copied to clipboard");
   };
@@ -160,7 +160,7 @@ export default function ProjectSettings() {
       return;
     }
 
-    const url = `https://pronghorn.red/project/${projectId}/settings?token=${token}`;
+    const url = `https://pronghorn.red/project/${projectId}/settings/t/${token}`;
     navigator.clipboard.writeText(url);
     toast.success("Full URL copied to clipboard");
   };

@@ -28,7 +28,7 @@ const App = () => (
     <Route path="/settings/organization" element={<Settings />} />
     <Route path="/settings/profile" element={<Settings />} />
     
-    {/* Project Routes */}
+    {/* Project Routes - Standard (authenticated users) */}
     <Route path="/project/:projectId/settings" element={<ProjectSettings />} />
     <Route path="/project/:projectId/artifacts" element={<Artifacts />} />
     <Route path="/project/:projectId/chat" element={<Chat />} />
@@ -39,6 +39,18 @@ const App = () => (
     <Route path="/project/:projectId/build" element={<Build />} />
     <Route path="/project/:projectId/repository" element={<Repository />} />
     <Route path="/project/:projectId/specifications" element={<Specifications />} />
+    
+    {/* Project Routes - With Token (shared access via path-based token) */}
+    <Route path="/project/:projectId/settings/t/:token" element={<ProjectSettings />} />
+    <Route path="/project/:projectId/artifacts/t/:token" element={<Artifacts />} />
+    <Route path="/project/:projectId/chat/t/:token" element={<Chat />} />
+    <Route path="/project/:projectId/requirements/t/:token" element={<Requirements />} />
+    <Route path="/project/:projectId/standards/t/:token" element={<ProjectStandards />} />
+    <Route path="/project/:projectId/canvas/t/:token" element={<Canvas />} />
+    <Route path="/project/:projectId/audit/t/:token" element={<Audit />} />
+    <Route path="/project/:projectId/build/t/:token" element={<Build />} />
+    <Route path="/project/:projectId/repository/t/:token" element={<Repository />} />
+    <Route path="/project/:projectId/specifications/t/:token" element={<Specifications />} />
     
     {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
     <Route path="*" element={<NotFound />} />

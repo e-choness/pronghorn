@@ -52,7 +52,7 @@ export default function Requirements() {
             <div className="text-center space-y-2 max-w-md px-4">
               <h1 className="text-xl font-semibold">Share token required</h1>
               <p className="text-sm text-muted-foreground">
-                This project can only be accessed via its secure sharing link. Please use the full URL that includes the <code>?token=</code> parameter.
+                This project can only be accessed via its secure sharing link. Please use the full URL that includes the <code>/t/token</code> path segment.
               </p>
             </div>
           </main>
