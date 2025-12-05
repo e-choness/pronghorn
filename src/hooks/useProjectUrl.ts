@@ -1,41 +1,59 @@
 import { useAuth } from "@/contexts/AuthContext";
-import { useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import type { To } from "react-router-dom";
 
 /**
  * Hook to construct project URLs with share token when needed
- * Authenticated users don't need tokens in URLs
- * Anonymous users need the token parameter to access projects
+ * Uses path-based token pattern: /project/{projectId}/page/t/{token}
  * 
- * Returns React Router's To type (object with pathname/search) to prevent URL encoding issues
+ * Returns React Router's To type (object with pathname) for clean navigation
  */
 export function useProjectUrl(projectId?: string) {
   const { user } = useAuth();
+  // Extract token from path params (new pattern) or query params (legacy)
+  const params = useParams<{ token?: string }>();
   const [searchParams] = useSearchParams();
-  const token = searchParams.get("token");
+  const tokenFromPath = params.token;
+  const tokenFromQuery = searchParams.get("token");
+  const token = tokenFromPath || tokenFromQuery;
 
   /**
    * Build a URL for project navigation
-   * Returns an object with pathname and search to prevent ? encoding issues
+   * Uses path-based token pattern: /project/{projectId}/page/t/{token}
    */
   const buildUrl = (path: string): To => {
     if (!projectId) return { pathname: path };
     
-    const pathname = `/project/${projectId}${path}`;
+    // Base path without trailing slash
+    const basePath = `/project/${projectId}${path}`;
     
-    // Always preserve token if present in URL (for both authenticated and anonymous)
-    // CRITICAL: Include ? prefix in search to prevent URL encoding issues
+    // Append token as path segment if present
     if (token) {
-      return { pathname, search: `?token=${token}` };
+      return { pathname: `${basePath}/t/${token}` };
     }
     
-    return { pathname };
+    return { pathname: basePath };
+  };
+
+  /**
+   * Get full URL string for external sharing (with domain)
+   */
+  const getShareUrl = (path: string, domain: string = "https://pronghorn.red"): string => {
+    if (!projectId) return `${domain}${path}`;
+    
+    const basePath = `/project/${projectId}${path}`;
+    
+    if (token) {
+      return `${domain}${basePath}/t/${token}`;
+    }
+    
+    return `${domain}${basePath}`;
   };
 
   const getTokenParam = () => {
     if (user) return "";
-    return token ? `?token=${token}` : "";
+    return token ? `/t/${token}` : "";
   };
 
-  return { buildUrl, token, getTokenParam };
+  return { buildUrl, getShareUrl, token, getTokenParam };
 }

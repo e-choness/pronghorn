@@ -1,14 +1,20 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 
 export function useShareToken(projectId?: string) {
+  // Extract token from path params (new pattern: /project/:projectId/page/t/:token)
+  const params = useParams<{ token?: string }>();
   const [searchParams] = useSearchParams();
   const [token, setToken] = useState<string | null>(null);
   const [isTokenSet, setIsTokenSet] = useState(false);
 
   useEffect(() => {
-    const tokenParam = searchParams.get("token");
+    // Priority: path param > query param (for backwards compatibility)
+    const tokenFromPath = params.token;
+    const tokenFromQuery = searchParams.get("token");
+    const tokenParam = tokenFromPath || tokenFromQuery;
+    
     setToken(tokenParam);
     
     if (tokenParam && projectId) {
@@ -26,7 +32,7 @@ export function useShareToken(projectId?: string) {
       // No token needed, mark as ready
       setIsTokenSet(true);
     }
-  }, [searchParams, projectId]);
+  }, [params.token, searchParams, projectId]);
 
   return { token, isTokenSet };
 }

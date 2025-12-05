@@ -173,7 +173,7 @@ export default function Dashboard() {
                   toast.error('This project is missing a share token. Please create a new project.');
                   return;
                 }
-                navigate({ pathname: `/project/${id}/settings`, search: `?token=${p.shareToken}` });
+                navigate({ pathname: `/project/${id}/settings/t/${p.shareToken}` });
               }} onUpdate={refetch} isAnonymous={true} shareToken={p.shareToken} onSaveToAccount={user ? handleSaveProject : undefined} />
                     </div>)}
                 </div>
@@ -181,13 +181,13 @@ export default function Dashboard() {
             {projects.length > 0 && <div>
                 {anonymousProjectCards.length > 0 && <h2 className="text-lg font-semibold mb-4">Your Projects</h2>}
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {projects.map(p => <ProjectCard key={p.projectId} {...p} onClick={id => {
+            {projects.map(p => <ProjectCard key={p.projectId} {...p} onClick={id => {
               const token = (p as any).shareToken;
               console.log('[Dashboard] Navigating to authenticated project:', {
                 id,
                 token
               });
-              navigate({ pathname: `/project/${id}/settings`, search: token ? `?token=${token}` : undefined });
+              navigate({ pathname: token ? `/project/${id}/settings/t/${token}` : `/project/${id}/settings` });
             }} onUpdate={refetch} />)}
                 </div>
               </div>}
