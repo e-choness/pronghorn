@@ -11,9 +11,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { 
   Image, FileSpreadsheet, FileText, PenLine, FileIcon, 
-  Presentation, Loader2, Upload 
+  Presentation, Loader2, Upload, PanelLeftClose, PanelLeft
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ArtifactImageGallery, ImageFile } from "./ArtifactImageGallery";
@@ -46,6 +52,7 @@ export function AddArtifactModal({
 }: AddArtifactModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>("manual");
   const [isCreating, setIsCreating] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Image state
@@ -66,6 +73,16 @@ export function AddArtifactModal({
   const [docxFiles, setDocxFiles] = useState<File[]>([]);
   const [pdfFiles, setPdfFiles] = useState<File[]>([]);
   const [pptxFiles, setPptxFiles] = useState<File[]>([]);
+
+  // Auto-collapse sidebar on small screens
+  useEffect(() => {
+    const checkScreenSize = () => {
+      setSidebarCollapsed(window.innerWidth < 640);
+    };
+    checkScreenSize();
+    window.addEventListener("resize", checkScreenSize);
+    return () => window.removeEventListener("resize", checkScreenSize);
+  }, []);
 
   // Auto-focus textarea when modal opens with manual tab active
   useEffect(() => {
@@ -315,189 +332,242 @@ export function AddArtifactModal({
     onOpenChange(false);
   };
 
+  const renderSidebarButton = (tab: typeof tabs[0], isComingSoon: boolean = false) => {
+    const button = (
+      <Button
+        key={tab.id}
+        variant={activeTab === tab.id ? "secondary" : "ghost"}
+        className={cn(
+          "w-full gap-2",
+          sidebarCollapsed ? "justify-center px-2" : "justify-start",
+          activeTab === tab.id && "bg-secondary"
+        )}
+        onClick={() => setActiveTab(tab.id)}
+        disabled={tab.disabled}
+      >
+        {tab.icon}
+        {!sidebarCollapsed && (
+          <>
+            <span className="flex-1 text-left truncate">{tab.label}</span>
+            {(tab.count ?? 0) > 0 && (
+              <Badge variant={isComingSoon ? "secondary" : "default"} className="h-5 px-1.5">
+                {tab.count}
+              </Badge>
+            )}
+          </>
+        )}
+        {sidebarCollapsed && (tab.count ?? 0) > 0 && (
+          <Badge 
+            variant={isComingSoon ? "secondary" : "default"} 
+            className="absolute -top-1 -right-1 h-4 w-4 p-0 text-[10px] flex items-center justify-center"
+          >
+            {tab.count}
+          </Badge>
+        )}
+      </Button>
+    );
+
+    if (sidebarCollapsed) {
+      return (
+        <Tooltip key={tab.id}>
+          <TooltipTrigger asChild>
+            <div className="relative">{button}</div>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {tab.label}
+            {(tab.count ?? 0) > 0 && ` (${tab.count})`}
+          </TooltipContent>
+        </Tooltip>
+      );
+    }
+
+    return button;
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-[95vw] md:max-w-[90vw] h-[90vh] flex flex-col p-0 gap-0">
-        <DialogHeader className="p-6 pb-4">
-          <DialogTitle>Add New Artifacts</DialogTitle>
-          <DialogDescription>
+        <DialogHeader className="p-4 sm:p-6 pb-2 sm:pb-4">
+          <DialogTitle className="text-base sm:text-lg">Add New Artifacts</DialogTitle>
+          <DialogDescription className="text-xs sm:text-sm">
             Create reusable knowledge blocks from various file types
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left Sidebar */}
-          <div className="w-48 border-r bg-muted/30 flex flex-col">
-            <ScrollArea className="flex-1">
-              <div className="p-2 space-y-1">
-                {tabs.slice(0, 5).map(tab => (
-                  <Button
-                    key={tab.id}
-                    variant={activeTab === tab.id ? "secondary" : "ghost"}
-                    className={cn(
-                      "w-full justify-start gap-2",
-                      activeTab === tab.id && "bg-secondary"
-                    )}
-                    onClick={() => setActiveTab(tab.id)}
-                    disabled={tab.disabled}
-                  >
-                    {tab.icon}
-                    <span className="flex-1 text-left">{tab.label}</span>
-                    {(tab.count ?? 0) > 0 && (
-                      <Badge variant="default" className="h-5 px-1.5">
-                        {tab.count}
-                      </Badge>
-                    )}
-                  </Button>
-                ))}
-
-                <Separator className="my-2" />
-                
-                <div className="px-2 py-1 text-xs text-muted-foreground font-medium">
-                  Coming Soon
-                </div>
-
-                {tabs.slice(5).map(tab => (
-                  <Button
-                    key={tab.id}
-                    variant={activeTab === tab.id ? "secondary" : "ghost"}
-                    className={cn(
-                      "w-full justify-start gap-2",
-                      activeTab === tab.id && "bg-secondary"
-                    )}
-                    onClick={() => setActiveTab(tab.id)}
-                  >
-                    {tab.icon}
-                    <span className="flex-1 text-left">{tab.label}</span>
-                    {(tab.count ?? 0) > 0 && (
-                      <Badge variant="secondary" className="h-5 px-1.5">
-                        {tab.count}
-                      </Badge>
-                    )}
-                  </Button>
-                ))}
-              </div>
-            </ScrollArea>
-          </div>
-
-          {/* Main Content */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="flex-1 p-4 overflow-hidden flex flex-col">
-              {activeTab === "manual" && (
-                <div className="h-full flex flex-col gap-4">
-                  <p className="text-sm text-muted-foreground">
-                    Enter or paste content manually to create an artifact.
-                  </p>
-                  <Textarea
-                    ref={textareaRef}
-                    value={manualContent}
-                    onChange={(e) => setManualContent(e.target.value)}
-                    placeholder="Enter artifact content..."
-                    className="flex-1 min-h-[300px] font-mono text-sm"
-                  />
-                </div>
-              )}
-              {activeTab === "upload" && (
-                <ArtifactUniversalUpload
-                  onImagesAdded={handleUniversalImagesAdded}
-                  onExcelAdded={handleUniversalExcelAdded}
-                  onTextFilesAdded={handleUniversalTextFilesAdded}
-                  onDocxFilesAdded={handleUniversalDocxAdded}
-                  onPdfFilesAdded={handleUniversalPdfAdded}
-                  onPptxFilesAdded={handleUniversalPptxAdded}
-                  counts={{
-                    images: images.length,
-                    excel: excelData ? 1 : 0,
-                    textFiles: textFiles.length,
-                    docx: docxFiles.length,
-                    pdf: pdfFiles.length,
-                    pptx: pptxFiles.length,
-                  }}
-                />
-              )}
-              {activeTab === "images" && (
-                <ArtifactImageGallery
-                  images={images}
-                  onImagesChange={setImages}
-                />
-              )}
-              {activeTab === "excel" && (
-                <ArtifactExcelViewer
-                  excelData={excelData}
-                  onExcelDataChange={setExcelData}
-                  selectedRows={excelSelectedRows}
-                  onSelectedRowsChange={setExcelSelectedRows}
-                  mergeAsOne={excelMergeAsOne}
-                  onMergeAsOneChange={setExcelMergeAsOne}
-                />
-              )}
-              {activeTab === "text" && (
-                <ArtifactTextFileList
-                  files={textFiles}
-                  onFilesChange={setTextFiles}
-                />
-              )}
-              {activeTab === "docx" && (
-                <ArtifactDocxPlaceholder
-                  files={docxFiles}
-                  onFilesChange={setDocxFiles}
-                />
-              )}
-              {activeTab === "pdf" && (
-                <ArtifactPdfPlaceholder
-                  files={pdfFiles}
-                  onFilesChange={setPdfFiles}
-                />
-              )}
-              {activeTab === "pptx" && (
-                <ArtifactPptxPlaceholder
-                  files={pptxFiles}
-                  onFilesChange={setPptxFiles}
-                />
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="border-t p-4 bg-muted/30">
-              <div className="flex items-center justify-between">
-                <div className="text-sm text-muted-foreground">
-                  {totalCount === 0 ? (
-                    "No items ready to create"
+        <TooltipProvider delayDuration={0}>
+          <div className="flex flex-1 overflow-hidden">
+            {/* Left Sidebar - Collapsible */}
+            <div className={cn(
+              "border-r bg-muted/30 flex flex-col transition-all duration-200",
+              sidebarCollapsed ? "w-12" : "w-36 sm:w-48"
+            )}>
+              {/* Collapse Toggle */}
+              <div className="p-1.5 border-b">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full h-7"
+                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                >
+                  {sidebarCollapsed ? (
+                    <PanelLeft className="h-4 w-4" />
                   ) : (
                     <>
-                      Ready to create: {" "}
-                      {selectedImagesCount > 0 && `${selectedImagesCount} image${selectedImagesCount !== 1 ? 's' : ''}`}
-                      {selectedImagesCount > 0 && (excelRowsCount > 0 || selectedTextFilesCount > 0 || manualContent.trim()) && ", "}
-                      {excelRowsCount > 0 && (excelMergeAsOne ? `1 excel (${excelRowsCount} rows)` : `${excelRowsCount} excel rows`)}
-                      {excelRowsCount > 0 && (selectedTextFilesCount > 0 || manualContent.trim()) && ", "}
-                      {selectedTextFilesCount > 0 && `${selectedTextFilesCount} text file${selectedTextFilesCount !== 1 ? 's' : ''}`}
-                      {selectedTextFilesCount > 0 && manualContent.trim() && ", "}
-                      {manualContent.trim() && "1 manual entry"}
+                      <PanelLeftClose className="h-4 w-4 mr-1.5" />
+                      <span className="text-xs">Collapse</span>
                     </>
                   )}
+                </Button>
+              </div>
+
+              <ScrollArea className="flex-1">
+                <div className="p-1.5 space-y-0.5">
+                  {tabs.slice(0, 5).map(tab => renderSidebarButton(tab))}
+
+                  <Separator className="my-1.5" />
+                  
+                  {!sidebarCollapsed && (
+                    <div className="px-2 py-1 text-[10px] sm:text-xs text-muted-foreground font-medium">
+                      Coming Soon
+                    </div>
+                  )}
+
+                  {tabs.slice(5).map(tab => renderSidebarButton(tab, true))}
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button 
-                    onClick={handleCreateArtifacts}
-                    disabled={totalCount === 0 || isCreating}
-                  >
-                    {isCreating ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Creating...
-                      </>
+              </ScrollArea>
+            </div>
+
+            {/* Main Content */}
+            <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+              <div className="flex-1 p-2 sm:p-4 overflow-hidden flex flex-col">
+                {activeTab === "manual" && (
+                  <div className="h-full flex flex-col gap-2 sm:gap-4">
+                    <p className="text-xs sm:text-sm text-muted-foreground">
+                      Enter or paste content manually to create an artifact.
+                    </p>
+                    <Textarea
+                      ref={textareaRef}
+                      value={manualContent}
+                      onChange={(e) => setManualContent(e.target.value)}
+                      placeholder="Enter artifact content..."
+                      className="flex-1 min-h-[200px] font-mono text-xs sm:text-sm"
+                    />
+                  </div>
+                )}
+                {activeTab === "upload" && (
+                  <ArtifactUniversalUpload
+                    onImagesAdded={handleUniversalImagesAdded}
+                    onExcelAdded={handleUniversalExcelAdded}
+                    onTextFilesAdded={handleUniversalTextFilesAdded}
+                    onDocxFilesAdded={handleUniversalDocxAdded}
+                    onPdfFilesAdded={handleUniversalPdfAdded}
+                    onPptxFilesAdded={handleUniversalPptxAdded}
+                    counts={{
+                      images: images.length,
+                      excel: excelData ? 1 : 0,
+                      textFiles: textFiles.length,
+                      docx: docxFiles.length,
+                      pdf: pdfFiles.length,
+                      pptx: pptxFiles.length,
+                    }}
+                  />
+                )}
+                {activeTab === "images" && (
+                  <ArtifactImageGallery
+                    images={images}
+                    onImagesChange={setImages}
+                  />
+                )}
+                {activeTab === "excel" && (
+                  <ArtifactExcelViewer
+                    excelData={excelData}
+                    onExcelDataChange={setExcelData}
+                    selectedRows={excelSelectedRows}
+                    onSelectedRowsChange={setExcelSelectedRows}
+                    mergeAsOne={excelMergeAsOne}
+                    onMergeAsOneChange={setExcelMergeAsOne}
+                  />
+                )}
+                {activeTab === "text" && (
+                  <ArtifactTextFileList
+                    files={textFiles}
+                    onFilesChange={setTextFiles}
+                  />
+                )}
+                {activeTab === "docx" && (
+                  <ArtifactDocxPlaceholder
+                    files={docxFiles}
+                    onFilesChange={setDocxFiles}
+                  />
+                )}
+                {activeTab === "pdf" && (
+                  <ArtifactPdfPlaceholder
+                    files={pdfFiles}
+                    onFilesChange={setPdfFiles}
+                  />
+                )}
+                {activeTab === "pptx" && (
+                  <ArtifactPptxPlaceholder
+                    files={pptxFiles}
+                    onFilesChange={setPptxFiles}
+                  />
+                )}
+              </div>
+
+              {/* Footer - Responsive */}
+              <div className="border-t p-2 sm:p-4 bg-muted/30">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:justify-between">
+                  <div className="text-xs sm:text-sm text-muted-foreground text-center sm:text-left order-2 sm:order-1">
+                    {totalCount === 0 ? (
+                      "No items ready"
                     ) : (
-                      `Create ${totalCount} Artifact${totalCount !== 1 ? 's' : ''}`
+                      <span className="hidden sm:inline">
+                        Ready: {" "}
+                        {selectedImagesCount > 0 && `${selectedImagesCount} image${selectedImagesCount !== 1 ? 's' : ''}`}
+                        {selectedImagesCount > 0 && (excelRowsCount > 0 || selectedTextFilesCount > 0 || manualContent.trim()) && ", "}
+                        {excelRowsCount > 0 && (excelMergeAsOne ? `1 excel` : `${excelRowsCount} rows`)}
+                        {excelRowsCount > 0 && (selectedTextFilesCount > 0 || manualContent.trim()) && ", "}
+                        {selectedTextFilesCount > 0 && `${selectedTextFilesCount} text`}
+                        {selectedTextFilesCount > 0 && manualContent.trim() && ", "}
+                        {manualContent.trim() && "1 manual"}
+                      </span>
                     )}
-                  </Button>
-                  <Button variant="outline" onClick={handleClose}>
-                    Cancel
-                  </Button>
+                    <span className="sm:hidden">
+                      {totalCount > 0 ? `${totalCount} item${totalCount !== 1 ? 's' : ''} ready` : "No items ready"}
+                    </span>
+                  </div>
+                  <div className="flex gap-2 order-1 sm:order-2">
+                    <Button
+                      onClick={handleCreateArtifacts}
+                      disabled={totalCount === 0 || isCreating}
+                      className="flex-1 sm:flex-none text-xs sm:text-sm h-8 sm:h-9"
+                    >
+                      {isCreating ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 animate-spin" />
+                          <span className="hidden sm:inline">Creating...</span>
+                          <span className="sm:hidden">...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="sm:hidden">Create ({totalCount})</span>
+                          <span className="hidden sm:inline">Create {totalCount} Artifact{totalCount !== 1 ? 's' : ''}</span>
+                        </>
+                      )}
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      onClick={handleClose}
+                      className="flex-1 sm:flex-none text-xs sm:text-sm h-8 sm:h-9"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        </TooltipProvider>
       </DialogContent>
     </Dialog>
   );
