@@ -54,26 +54,27 @@ export function CompactDropZone({
   return (
     <div
       className={cn(
-        "border-2 border-dashed rounded-lg p-3 flex items-center gap-4 transition-colors shrink-0",
+        "border-2 border-dashed rounded-lg p-2 sm:p-3 flex flex-col sm:flex-row items-center gap-2 sm:gap-4 transition-colors shrink-0",
         isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25"
       )}
       onDragOver={handleLocalDragOver}
       onDragLeave={onDragLeave}
       onDrop={handleLocalDrop}
     >
-      <Icon className="h-8 w-8 text-muted-foreground shrink-0" />
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{label}</p>
-        <p className="text-xs text-muted-foreground truncate">{acceptText}</p>
+      <Icon className="h-6 w-6 sm:h-8 sm:w-8 text-muted-foreground shrink-0" />
+      <div className="flex-1 min-w-0 text-center sm:text-left">
+        <p className="text-xs sm:text-sm font-medium truncate">{label}</p>
+        <p className="text-[10px] sm:text-xs text-muted-foreground truncate hidden sm:block">{acceptText}</p>
       </div>
       <Button 
         variant="outline" 
         size="sm"
         onClick={() => fileInputRef.current?.click()}
-        className="shrink-0"
+        className="shrink-0 h-7 sm:h-8 text-xs sm:text-sm px-2 sm:px-3"
       >
-        <Upload className="h-3.5 w-3.5 mr-1.5" />
-        {buttonText}
+        <Upload className="h-3 w-3 sm:h-3.5 sm:w-3.5 mr-1 sm:mr-1.5" />
+        <span className="hidden sm:inline">{buttonText}</span>
+        <span className="sm:hidden">Select</span>
       </Button>
       <input
         ref={fileInputRef}
