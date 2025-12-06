@@ -373,7 +373,7 @@ EXAMPLE (follow this concise style):
 }`;
 
 serve(async (req) => {
-  console.log("[decompose-requirements] Version: 2025-12-06-v3 - strict constraints enabled");
+  console.log("[decompose-requirements] Version: 2025-12-06-v4 - removed Gemini responseSchema");
   
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -587,7 +587,7 @@ User story descriptions: LEAVE EMPTY or max 15 words.
       apiKey = Deno.env.get("GEMINI_API_KEY");
       if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
 
-      console.log("Calling Gemini API with schema enforcement...");
+      console.log("Calling Gemini API with responseMimeType only (no schema)...");
       llmResponse = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`,
         {
@@ -600,7 +600,6 @@ User story descriptions: LEAVE EMPTY or max 15 words.
               maxOutputTokens: maxTokens,
               temperature: 0.4,
               responseMimeType: "application/json",
-              responseSchema: getGeminiRequirementsSchema(),
             },
           }),
         }
