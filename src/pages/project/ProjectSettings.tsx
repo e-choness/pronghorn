@@ -30,7 +30,6 @@ export default function ProjectSettings() {
   const queryClient = useQueryClient();
   const [projectName, setProjectName] = useState("");
   const [projectDescription, setProjectDescription] = useState("");
-  const [githubRepo, setGithubRepo] = useState("");
   const [organization, setOrganization] = useState("");
   const [budget, setBudget] = useState("");
   const [scope, setScope] = useState("");
@@ -78,7 +77,6 @@ export default function ProjectSettings() {
     if (project) {
       setProjectName(project.name || "");
       setProjectDescription(project.description || "");
-      setGithubRepo(project.github_repo || "");
       setOrganization(project.organization || "");
       setBudget(project.budget?.toString() || "");
       setScope(project.scope || "");
@@ -100,7 +98,6 @@ export default function ProjectSettings() {
         p_token: shareToken || null,
         p_name: projectName,
         p_description: projectDescription,
-        p_github_repo: githubRepo,
         p_organization: organization,
         p_budget: budget ? parseFloat(budget) : null,
         p_scope: scope,
@@ -190,15 +187,6 @@ export default function ProjectSettings() {
                       />
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="repo">GitHub Repository</Label>
-                      <Input
-                        id="repo"
-                        placeholder="owner/repo"
-                        value={githubRepo}
-                        onChange={(e) => setGithubRepo(e.target.value)}
-                      />
-                    </div>
 
                     <div className="space-y-2">
                       <Label htmlFor="organization">Organization</Label>
