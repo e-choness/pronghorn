@@ -2386,13 +2386,38 @@ export type Database = {
           isSetofReturn: true
         }
       }
-      get_repo_files_with_token: {
-        Args: { p_file_paths?: string[]; p_repo_id: string; p_token: string }
-        Returns: {
-          content: string
-          path: string
-        }[]
-      }
+      get_repo_files_with_token:
+        | {
+            Args: { p_repo_id: string; p_token: string }
+            Returns: {
+              content: string
+              created_at: string
+              id: string
+              is_binary: boolean
+              last_commit_sha: string | null
+              path: string
+              project_id: string
+              repo_id: string
+              updated_at: string
+            }[]
+            SetofOptions: {
+              from: "*"
+              to: "repo_files"
+              isOneToOne: false
+              isSetofReturn: true
+            }
+          }
+        | {
+            Args: {
+              p_file_paths?: string[]
+              p_repo_id: string
+              p_token: string
+            }
+            Returns: {
+              content: string
+              path: string
+            }[]
+          }
       get_requirement_standards_with_token: {
         Args: { p_requirement_id: string; p_token: string }
         Returns: {
@@ -2789,7 +2814,7 @@ export type Database = {
       }
       rename_file_with_token:
         | {
-            Args: { p_file_id: string; p_new_path: string; p_token: string }
+            Args: { p_file_id: string; p_new_path: string; p_token?: string }
             Returns: {
               content: string
               created_at: string
@@ -2809,7 +2834,7 @@ export type Database = {
             }
           }
         | {
-            Args: { p_file_id: string; p_new_path: string; p_token?: string }
+            Args: { p_file_id: string; p_new_path: string; p_token: string }
             Returns: {
               content: string
               created_at: string
@@ -3147,52 +3172,99 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      update_project_with_token: {
-        Args: {
-          p_budget?: number
-          p_description?: string
-          p_github_repo?: string
-          p_name: string
-          p_organization?: string
-          p_priority?: string
-          p_project_id: string
-          p_scope?: string
-          p_tags?: string[]
-          p_timeline_end?: string
-          p_timeline_start?: string
-          p_token: string
-        }
-        Returns: {
-          budget: number | null
-          created_at: string
-          created_by: string | null
-          description: string | null
-          github_branch: string | null
-          github_repo: string | null
-          id: string
-          max_tokens: number | null
-          name: string
-          org_id: string
-          organization: string | null
-          priority: string | null
-          scope: string | null
-          selected_model: string | null
-          share_token: string | null
-          status: Database["public"]["Enums"]["project_status"]
-          tags: string[] | null
-          thinking_budget: number | null
-          thinking_enabled: boolean | null
-          timeline_end: string | null
-          timeline_start: string | null
-          updated_at: string
-        }
-        SetofOptions: {
-          from: "*"
-          to: "projects"
-          isOneToOne: true
-          isSetofReturn: false
-        }
-      }
+      update_project_with_token:
+        | {
+            Args: {
+              p_budget?: number
+              p_description?: string
+              p_github_repo?: string
+              p_name: string
+              p_organization?: string
+              p_priority?: string
+              p_project_id: string
+              p_scope?: string
+              p_tags?: string[]
+              p_timeline_end?: string
+              p_timeline_start?: string
+              p_token: string
+            }
+            Returns: {
+              budget: number | null
+              created_at: string
+              created_by: string | null
+              description: string | null
+              github_branch: string | null
+              github_repo: string | null
+              id: string
+              max_tokens: number | null
+              name: string
+              org_id: string
+              organization: string | null
+              priority: string | null
+              scope: string | null
+              selected_model: string | null
+              share_token: string | null
+              status: Database["public"]["Enums"]["project_status"]
+              tags: string[] | null
+              thinking_budget: number | null
+              thinking_enabled: boolean | null
+              timeline_end: string | null
+              timeline_start: string | null
+              updated_at: string
+            }
+            SetofOptions: {
+              from: "*"
+              to: "projects"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
+        | {
+            Args: {
+              p_budget?: number
+              p_description?: string
+              p_name?: string
+              p_organization?: string
+              p_priority?: string
+              p_project_id: string
+              p_scope?: string
+              p_status?: string
+              p_tags?: string[]
+              p_timeline_end?: string
+              p_timeline_start?: string
+              p_token: string
+            }
+            Returns: {
+              budget: number | null
+              created_at: string
+              created_by: string | null
+              description: string | null
+              github_branch: string | null
+              github_repo: string | null
+              id: string
+              max_tokens: number | null
+              name: string
+              org_id: string
+              organization: string | null
+              priority: string | null
+              scope: string | null
+              selected_model: string | null
+              share_token: string | null
+              status: Database["public"]["Enums"]["project_status"]
+              tags: string[] | null
+              thinking_budget: number | null
+              thinking_enabled: boolean | null
+              timeline_end: string | null
+              timeline_start: string | null
+              updated_at: string
+            }
+            SetofOptions: {
+              from: "*"
+              to: "projects"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
       update_requirement_standard_with_token: {
         Args: { p_id: string; p_notes: string; p_token: string }
         Returns: {
@@ -3335,32 +3407,59 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      upsert_file_with_token: {
-        Args: {
-          p_commit_sha?: string
-          p_content: string
-          p_path: string
-          p_repo_id: string
-          p_token: string
-        }
-        Returns: {
-          content: string
-          created_at: string
-          id: string
-          is_binary: boolean
-          last_commit_sha: string | null
-          path: string
-          project_id: string
-          repo_id: string
-          updated_at: string
-        }[]
-        SetofOptions: {
-          from: "*"
-          to: "repo_files"
-          isOneToOne: false
-          isSetofReturn: true
-        }
-      }
+      upsert_file_with_token:
+        | {
+            Args: {
+              p_content: string
+              p_is_binary?: boolean
+              p_path: string
+              p_repo_id: string
+              p_token?: string
+            }
+            Returns: {
+              content: string
+              created_at: string
+              id: string
+              is_binary: boolean
+              last_commit_sha: string | null
+              path: string
+              project_id: string
+              repo_id: string
+              updated_at: string
+            }
+            SetofOptions: {
+              from: "*"
+              to: "repo_files"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
+        | {
+            Args: {
+              p_commit_sha?: string
+              p_content: string
+              p_path: string
+              p_repo_id: string
+              p_token: string
+            }
+            Returns: {
+              content: string
+              created_at: string
+              id: string
+              is_binary: boolean
+              last_commit_sha: string | null
+              path: string
+              project_id: string
+              repo_id: string
+              updated_at: string
+            }[]
+            SetofOptions: {
+              from: "*"
+              to: "repo_files"
+              isOneToOne: false
+              isSetofReturn: true
+            }
+          }
       upsert_files_batch_with_token: {
         Args: { p_files: Json; p_repo_id: string; p_token: string }
         Returns: {
