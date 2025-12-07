@@ -810,42 +810,48 @@ export default function Build() {
                                 <ChevronRight className="h-4 w-4" />
                               </Button>
                             </div>
-                          <Tabs defaultValue="chat" className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden">
-                            <TabsList className="grid w-full grid-cols-3 shrink-0">
-                              <TabsTrigger value="chat">Chat</TabsTrigger>
-                              <TabsTrigger value="staging">Staging</TabsTrigger>
-                              <TabsTrigger value="history">History</TabsTrigger>
-                            </TabsList>
+                          <Tabs defaultValue="chat" className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                            {/* Fixed tabs header - cannot shrink */}
+                            <div className="shrink-0 p-1">
+                              <TabsList className="grid w-full grid-cols-3">
+                                <TabsTrigger value="chat">Chat</TabsTrigger>
+                                <TabsTrigger value="staging">Staging</TabsTrigger>
+                                <TabsTrigger value="history">History</TabsTrigger>
+                              </TabsList>
+                            </div>
 
-                            <TabsContent value="chat" className="flex-1 overflow-hidden mt-0">
-                              <UnifiedAgentInterface
-                                projectId={projectId}
-                                repoId={defaultRepo?.id || null}
-                                shareToken={shareToken}
-                                attachedFiles={attachedFiles}
-                                onRemoveFile={handleRemoveAttachedFile}
-                                files={files}
-                                autoCommit={autoCommit}
-                                onAutoCommitChange={setAutoCommit}
-                              />
-                            </TabsContent>
+                            {/* Scrollable content area - constrained to remaining space */}
+                            <div className="flex-1 min-h-0 overflow-hidden">
+                              <TabsContent value="chat" className="h-full overflow-hidden mt-0">
+                                <UnifiedAgentInterface
+                                  projectId={projectId}
+                                  repoId={defaultRepo?.id || null}
+                                  shareToken={shareToken}
+                                  attachedFiles={attachedFiles}
+                                  onRemoveFile={handleRemoveAttachedFile}
+                                  files={files}
+                                  autoCommit={autoCommit}
+                                  onAutoCommitChange={setAutoCommit}
+                                />
+                              </TabsContent>
 
-                            <TabsContent value="staging" className="flex-1 overflow-hidden mt-0">
-                              <StagingPanel
-                                projectId={projectId}
-                                shareToken={shareToken}
-                                onViewDiff={handleViewDiff}
-                                autoCommit={autoCommit}
-                                onAutoCommitChange={setAutoCommit}
-                              />
-                            </TabsContent>
+                              <TabsContent value="staging" className="h-full overflow-hidden mt-0">
+                                <StagingPanel
+                                  projectId={projectId}
+                                  shareToken={shareToken}
+                                  onViewDiff={handleViewDiff}
+                                  autoCommit={autoCommit}
+                                  onAutoCommitChange={setAutoCommit}
+                                />
+                              </TabsContent>
 
-                            <TabsContent value="history" className="flex-1 overflow-hidden mt-0 h-full">
-                              <CommitHistory
-                                projectId={projectId}
-                                shareToken={shareToken}
-                              />
-                            </TabsContent>
+                              <TabsContent value="history" className="h-full overflow-hidden mt-0">
+                                <CommitHistory
+                                  projectId={projectId}
+                                  shareToken={shareToken}
+                                />
+                              </TabsContent>
+                            </div>
                           </Tabs>
                         </div>
                       </ResizablePanel>
