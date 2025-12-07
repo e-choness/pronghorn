@@ -487,7 +487,7 @@ export function StagingPanel({ projectId, shareToken, onViewDiff, autoCommit, on
             Review uncommitted changes before committing to the repository
           </CardDescription>
         </CardHeader>
-      <CardContent className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
+      <CardContent className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
         {/* Auto-commit checkbox - always visible */}
         <div className="flex items-center gap-2 mb-4 pb-4 border-b">
           <Checkbox 
