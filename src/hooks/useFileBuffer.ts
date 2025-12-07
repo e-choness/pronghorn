@@ -11,7 +11,6 @@ export interface BufferedFile {
   lastSavedContent: string;   // What was last saved to staging (for dirty detection)
   isDirty: boolean;
   isSaving: boolean;
-  version: number;            // Increments on reload to force editor refresh
 }
 
 interface UseFileBufferOptions {
@@ -279,7 +278,6 @@ export function useFileBuffer({ repoId, shareToken, onFileSaved }: UseFileBuffer
           lastSavedContent: loadedContent.content,         // Initial = content
           isDirty: false,
           isSaving: false,
-          version: 0,  // Initialize version
         });
         return newMap;
       });
@@ -363,33 +361,24 @@ export function useFileBuffer({ repoId, shareToken, onFileSaved }: UseFileBuffer
   }, [currentPath]);
 
   // Reload current file from database (discard local changes)
-  // forceCheckStaging: when true, always check repo_staging first (for external changes)
-  const reloadCurrentFile = useCallback(async (forceCheckStaging?: boolean) => {
+  const reloadCurrentFile = useCallback(async () => {
     if (!currentPath || !repoId) return;
 
     const file = buffer.get(currentPath);
     if (!file) return;
 
-    // Use forceCheckStaging if provided, otherwise use cached isStaged value
-    const shouldCheckStaging = forceCheckStaging ?? file.isStaged;
-    
-    const loadedContent = await loadFileContent(file.id, file.path, shouldCheckStaging);
+    const loadedContent = await loadFileContent(file.id, file.path, file.isStaged);
     
     if (loadedContent) {
       setBuffer(prev => {
         const newMap = new Map(prev);
-        const existingFile = newMap.get(currentPath);
-        if (!existingFile) return prev;  // Guard: file was removed from buffer
-        
         newMap.set(currentPath, {
-          ...existingFile,  // Use latest from prev state, not stale closure
+          ...file,
           content: loadedContent.content,
           originalContent: loadedContent.originalContent,
           lastSavedContent: loadedContent.content,
           isDirty: false,
           isSaving: false,
-          isStaged: shouldCheckStaging,
-          version: existingFile.version + 1,
         });
         return newMap;
       });
