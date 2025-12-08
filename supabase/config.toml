@@ -1,3 +1,5 @@
+project_id = "obkzdksfayygnrzdqoam"
+
 [functions.decompose-requirements]
 verify_jwt = false
 
@@ -62,4 +64,13 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.link-existing-repo]
+verify_jwt = false
+
+[functions.clone-public-repo]
+verify_jwt = false
+
+[functions.coding-agent-orchestrator]
+verify_jwt = false
+
+[functions.render-service]
 verify_jwt = false
