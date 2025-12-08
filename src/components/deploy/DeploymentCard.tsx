@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { 
   Play, Square, Trash2, ExternalLink, Settings, 
   RefreshCw, Cloud, Laptop, Server, GitBranch,
-  Rocket, AlertCircle, CheckCircle, Clock, XCircle
+  Rocket, CheckCircle, Clock, XCircle, Download, Eye
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -40,15 +40,51 @@ const platformIcons: Record<string, React.ReactNode> = {
 const DeploymentCard = ({ deployment, shareToken, onUpdate }: DeploymentCardProps) => {
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isLogsOpen, setIsLogsOpen] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isActionLoading, setIsActionLoading] = useState<string | null>(null);
 
   const status = statusConfig[deployment.status] || statusConfig.pending;
+
+  const invokeRenderService = async (action: string) => {
+    setIsActionLoading(action);
+    try {
+      const { data, error } = await supabase.functions.invoke('render-service', {
+        body: {
+          action,
+          deploymentId: deployment.id,
+          shareToken: shareToken || null,
+        },
+      });
+
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+
+      toast.success(`${action.charAt(0).toUpperCase() + action.slice(1)} successful`);
+      onUpdate();
+    } catch (error: any) {
+      console.error(`Error ${action}:`, error);
+      toast.error(error.message || `Failed to ${action}`);
+    } finally {
+      setIsActionLoading(null);
+    }
+  };
+
+  const handleCreate = () => invokeRenderService('create');
+  const handleDeploy = () => invokeRenderService('deploy');
+  const handleStart = () => invokeRenderService('start');
+  const handleStop = () => invokeRenderService('stop');
 
   const handleDelete = async () => {
     if (!confirm("Are you sure you want to delete this deployment?")) return;
     
     setIsDeleting(true);
     try {
+      // If there's a Render service, delete it first
+      if (deployment.render_service_id) {
+        await invokeRenderService('delete');
+      }
+      
       const { error } = await supabase.rpc("delete_deployment_with_token", {
         p_deployment_id: deployment.id,
         p_token: shareToken || null,
@@ -69,8 +105,10 @@ const DeploymentCard = ({ deployment, shareToken, onUpdate }: DeploymentCardProp
     if (deployment.url) return deployment.url;
     // Generate expected URL based on naming convention
     const envPrefix = deployment.environment === "production" ? "" : `${deployment.environment}-`;
-    return `https://${envPrefix}${deployment.name}.pronghorn.cloud`;
+    return `https://${envPrefix}${deployment.name}.onrender.com`;
   };
+
+  const hasRenderService = !!deployment.render_service_id;
 
   return (
     <>
@@ -128,25 +166,81 @@ const DeploymentCard = ({ deployment, shareToken, onUpdate }: DeploymentCardProp
             <div className="flex items-center gap-2">
               {deployment.platform === "pronghorn_cloud" && (
                 <>
-                  {deployment.status === "running" ? (
-                    <Button variant="outline" size="sm" disabled>
-                      <Square className="h-4 w-4 mr-1" />
-                      Stop
+                  {!hasRenderService ? (
+                    <Button 
+                      variant="default" 
+                      size="sm" 
+                      onClick={handleCreate}
+                      disabled={isActionLoading === 'create'}
+                    >
+                      {isActionLoading === 'create' ? (
+                        <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                      ) : (
+                        <Cloud className="h-4 w-4 mr-1" />
+                      )}
+                      Create Service
                     </Button>
                   ) : (
-                    <Button variant="outline" size="sm" disabled>
-                      <Play className="h-4 w-4 mr-1" />
-                      Start
-                    </Button>
+                    <>
+                      {deployment.status === "running" || deployment.status === "deploying" ? (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={handleStop}
+                          disabled={isActionLoading === 'stop'}
+                        >
+                          {isActionLoading === 'stop' ? (
+                            <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                          ) : (
+                            <Square className="h-4 w-4 mr-1" />
+                          )}
+                          Stop
+                        </Button>
+                      ) : (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={handleStart}
+                          disabled={isActionLoading === 'start'}
+                        >
+                          {isActionLoading === 'start' ? (
+                            <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                          ) : (
+                            <Play className="h-4 w-4 mr-1" />
+                          )}
+                          Start
+                        </Button>
+                      )}
+                      <Button 
+                        variant="default" 
+                        size="sm" 
+                        onClick={handleDeploy}
+                        disabled={isActionLoading === 'deploy'}
+                      >
+                        {isActionLoading === 'deploy' ? (
+                          <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <Rocket className="h-4 w-4 mr-1" />
+                        )}
+                        Deploy
+                      </Button>
+                      {deployment.url && (
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => setIsPreviewOpen(true)}
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          Preview
+                        </Button>
+                      )}
+                    </>
                   )}
-                  <Button variant="default" size="sm" disabled>
-                    <Rocket className="h-4 w-4 mr-1" />
-                    Deploy
-                  </Button>
                 </>
               )}
               {deployment.platform === "local" && (
                 <Button variant="outline" size="sm" disabled>
+                  <Download className="h-4 w-4 mr-1" />
                   Download Package
                 </Button>
               )}
@@ -172,7 +266,11 @@ const DeploymentCard = ({ deployment, shareToken, onUpdate }: DeploymentCardProp
                 onClick={handleDelete}
                 disabled={isDeleting}
               >
-                <Trash2 className="h-4 w-4" />
+                {isDeleting ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
               </Button>
             </div>
           </div>
@@ -193,6 +291,39 @@ const DeploymentCard = ({ deployment, shareToken, onUpdate }: DeploymentCardProp
         deploymentId={deployment.id}
         shareToken={shareToken}
       />
+
+      {/* Preview Dialog */}
+      {isPreviewOpen && deployment.url && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-background border rounded-lg shadow-lg w-full max-w-6xl h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b">
+              <div className="flex items-center gap-2">
+                <Eye className="h-5 w-5" />
+                <span className="font-medium">Preview: {deployment.name}</span>
+                <a 
+                  href={deployment.url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  Open in new tab
+                </a>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setIsPreviewOpen(false)}>
+                Close
+              </Button>
+            </div>
+            <div className="flex-1 p-1">
+              <iframe 
+                src={deployment.url} 
+                className="w-full h-full rounded border"
+                title={`Preview of ${deployment.name}`}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };
