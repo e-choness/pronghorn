@@ -153,11 +153,12 @@ async function createRenderService(
   
   // Fall back to prime repo for the project if no specific repo
   if (!repo) {
-    const { data: primeRepo } = await supabase.rpc('get_prime_repo_with_token', {
+    const { data: primeRepoData } = await supabase.rpc('get_prime_repo_with_token', {
       p_project_id: deployment.project_id,
       p_token: shareToken || null,
     });
-    repo = primeRepo;
+    // RPC returns array, get first element
+    repo = Array.isArray(primeRepoData) ? primeRepoData[0] : primeRepoData;
   }
   
   if (!repo) {
