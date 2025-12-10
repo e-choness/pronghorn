@@ -56,7 +56,7 @@ export default function Terms() {
                     or removed at any time during the testing period.
                   </p>
                   <p className="text-sm bg-amber-100 p-4 rounded-lg">
-                    <strong>MIT-Style Liability Waiver:</strong> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, 
+                    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
                     EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR 
                     PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE GOVERNMENT OF ALBERTA, ITS MINISTERS, OFFICERS, EMPLOYEES, 
                     OR AGENTS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR 
