@@ -73,6 +73,36 @@ export default function ProjectSettings() {
 
   const isOwner = userRole === "owner";
 
+  // Fetch project tokens to auto-update URL with owner token
+  const { data: tokens } = useQuery({
+    queryKey: ["project-tokens", projectId],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("get_project_tokens_with_token", {
+        p_project_id: projectId,
+        p_token: shareToken || null,
+      });
+      if (error) return [];
+      return data as Array<{ id: string; token: string; role: string; label: string | null }>;
+    },
+    enabled: !!projectId && isTokenSet && isOwner,
+  });
+
+  // Auto-update URL with owner token if not present
+  useEffect(() => {
+    if (!tokens || tokens.length === 0 || shareToken) return;
+    
+    // Find "Default Owner Token" first, then any owner token
+    const defaultOwnerToken = tokens.find(
+      (t) => t.role === "owner" && t.label === "Default Owner Token"
+    );
+    const firstOwnerToken = tokens.find((t) => t.role === "owner");
+    const ownerToken = defaultOwnerToken || firstOwnerToken;
+    
+    if (ownerToken) {
+      navigate(`/project/${projectId}/settings/t/${ownerToken.token}`, { replace: true });
+    }
+  }, [tokens, shareToken, projectId, navigate]);
+
   useEffect(() => {
     if (project) {
       setProjectName(project.name || "");
