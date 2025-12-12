@@ -85,7 +85,10 @@ export function SqlQueryEditor({ query, onQueryChange, onExecute, isExecuting, o
   };
 
   const handleEditorChange = (value: string | undefined) => {
-    setInternalQuery(value || "");
+    const next = value ?? "";
+    setInternalQuery(next);
+    lastExternalQuery.current = next;
+    onQueryChange?.(next);
   };
 
   const handleExecute = useCallback(async () => {
@@ -100,12 +103,18 @@ export function SqlQueryEditor({ query, onQueryChange, onExecute, isExecuting, o
   }, [editorValue, queryHistory, onExecute, isExecuting]);
 
   const handleClear = () => {
-    handleEditorChange("");
+    const next = "";
+    setInternalQuery(next);
+    lastExternalQuery.current = next;
+    onQueryChange?.(next);
     editorRef.current?.focus();
   };
 
   const handleSelectHistory = (historyQuery: string) => {
-    setInternalQuery(historyQuery);
+    const next = historyQuery;
+    setInternalQuery(next);
+    lastExternalQuery.current = next;
+    onQueryChange?.(next);
   };
 
   const handleFormat = () => {
@@ -129,7 +138,10 @@ export function SqlQueryEditor({ query, onQueryChange, onExecute, isExecuting, o
       .replace(/\bLIMIT\b/gi, "\nLIMIT")
       .replace(/\bOFFSET\b/gi, "\nOFFSET")
       .trim();
-    setInternalQuery(formatted);
+    const next = formatted;
+    setInternalQuery(next);
+    lastExternalQuery.current = next;
+    onQueryChange?.(next);
   };
 
   return (
