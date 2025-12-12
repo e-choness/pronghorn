@@ -86,8 +86,14 @@ export function DatabaseExplorerModal({
       },
     });
 
-    if (error || !data?.success) {
-      throw new Error(data?.error || error?.message || `Failed to ${action}`);
+    // When edge function returns non-2xx, data still contains response body
+    // Check data.error first (from our edge function response), then fallback to invoke error
+    if (data && !data.success) {
+      throw new Error(data.error || `Failed to ${action}`);
+    }
+    
+    if (error) {
+      throw new Error(error.message || `Failed to ${action}`);
     }
 
     return data.data;
