@@ -97,6 +97,11 @@ serve(async (req) => {
       if (attachedContext.files?.length) {
         contextParts.push(`REPOSITORY FILES: ${attachedContext.files.length} files attached`);
       }
+      if (attachedContext.databases?.length) {
+        const tables = attachedContext.databases.filter((d: any) => d.type === 'table');
+        const hasSampleData = tables.some((t: any) => t.sampleData?.length > 0);
+        contextParts.push(`DATABASE SCHEMAS: ${attachedContext.databases.length} items attached (${tables.length} tables${hasSampleData ? ' with sample data' : ''})`);
+      }
 
       if (contextParts.length > 0) {
         const jsonString = JSON.stringify(attachedContext, null, 2);

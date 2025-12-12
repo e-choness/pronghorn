@@ -23,7 +23,8 @@ import {
   CheckSquare,
   Square,
   Loader2,
-  FileCode
+  FileCode,
+  Database
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -34,7 +35,18 @@ import { ArtifactsListSelector } from "./ArtifactsListSelector";
 import { ChatSessionsListSelector } from "./ChatSessionsListSelector";
 import { CanvasItemsSelector } from "./CanvasItemsSelector";
 import { RepositoryFilesSelector } from "./RepositoryFilesSelector";
+import { DatabaseSchemaSelector } from "./DatabaseSchemaSelector";
 import { useIsMobile } from "@/hooks/use-mobile";
+
+export interface DatabaseSchemaItem {
+  databaseId: string;
+  databaseName: string;
+  schemaName: string;
+  type: 'table' | 'view' | 'function' | 'trigger' | 'index' | 'sequence' | 'type';
+  name: string;
+  columns?: Array<{ name: string; type: string; nullable: boolean }>;
+  sampleData?: any[];
+}
 
 export interface ProjectSelectionResult {
   projectMetadata: any | null;
@@ -47,6 +59,7 @@ export interface ProjectSelectionResult {
   canvasEdges: any[];
   canvasLayers: any[];
   files: Array<{ path: string; content: string }>;
+  databases: DatabaseSchemaItem[];
 }
 
 interface ProjectSelectorProps {
@@ -66,7 +79,8 @@ type CategoryType =
   | "standards" 
   | "techStacks" 
   | "canvas"
-  | "files";
+  | "files"
+  | "databases";
 
 interface Category {
   id: CategoryType;
@@ -123,6 +137,12 @@ const CATEGORIES: Category[] = [
     label: "Repository Files",
     icon: <FileCode className="h-4 w-4" />,
     description: "Source code and project files"
+  },
+  {
+    id: "databases",
+    label: "Databases",
+    icon: <Database className="h-4 w-4" />,
+    description: "Database schemas, tables, and sample data"
   }
 ];
 
@@ -163,6 +183,9 @@ export function ProjectSelector({
     new Set(initialSelection?.canvasLayers ?? [])
   );
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+  const [selectedDatabaseItems, setSelectedDatabaseItems] = useState<Set<string>>(new Set());
+  const [includeSampleData, setIncludeSampleData] = useState(false);
+  const [sampleDataRows, setSampleDataRows] = useState(5);
 
   // Load project-linked standards & tech stacks
   const [standardCategories, setStandardCategories] = useState<any[]>([]);
@@ -489,6 +512,92 @@ export function ProjectSelector({
         }
       }
 
+      // Fetch database schema items
+      const databases: DatabaseSchemaItem[] = [];
+      if (selectedDatabaseItems.size > 0) {
+        // Parse selected items and group by database
+        const databaseGroups = new Map<string, { schemaName: string; type: string; name: string }[]>();
+        
+        for (const key of selectedDatabaseItems) {
+          const parts = key.split(':');
+          const databaseId = parts[0];
+          const schemaName = parts[1];
+          const type = parts[2];
+          const name = parts.slice(3).join(':');
+          
+          if (!databaseGroups.has(databaseId)) {
+            databaseGroups.set(databaseId, []);
+          }
+          databaseGroups.get(databaseId)!.push({ schemaName, type, name });
+        }
+
+        // Get database info
+        const { data: dbData } = await supabase.rpc("get_databases_with_token", {
+          p_project_id: projectId,
+          p_token: shareToken
+        });
+        const dbMap = new Map((dbData || []).map((d: any) => [d.id, d]));
+
+        // Fetch columns for selected tables
+        for (const [databaseId, items] of databaseGroups) {
+          const dbInfo = dbMap.get(databaseId);
+          if (!dbInfo) continue;
+
+          for (const item of items) {
+            const dbSchemaItem: DatabaseSchemaItem = {
+              databaseId,
+              databaseName: dbInfo.name,
+              schemaName: item.schemaName,
+              type: item.type as DatabaseSchemaItem['type'],
+              name: item.name
+            };
+
+            // Fetch columns for tables
+            if (item.type === 'table') {
+              try {
+                const colResponse = await supabase.functions.invoke('manage-database', {
+                  body: {
+                    databaseId,
+                    shareToken,
+                    action: 'get_table_columns',
+                    schema: item.schemaName,
+                    table: item.name
+                  }
+                });
+                if (colResponse.data) {
+                  dbSchemaItem.columns = colResponse.data.map((c: any) => ({
+                    name: c.column_name,
+                    type: c.data_type,
+                    nullable: c.is_nullable === 'YES'
+                  }));
+                }
+
+                // Fetch sample data if enabled
+                if (includeSampleData) {
+                  const sampleResponse = await supabase.functions.invoke('manage-database', {
+                    body: {
+                      databaseId,
+                      shareToken,
+                      action: 'get_table_data',
+                      schema: item.schemaName,
+                      table: item.name,
+                      limit: sampleDataRows
+                    }
+                  });
+                  if (sampleResponse.data?.rows) {
+                    dbSchemaItem.sampleData = sampleResponse.data.rows;
+                  }
+                }
+              } catch (err) {
+                console.error(`Error fetching columns for ${item.name}:`, err);
+              }
+            }
+
+            databases.push(dbSchemaItem);
+          }
+        }
+      }
+
       const result: ProjectSelectionResult = {
         projectMetadata,
         artifacts,
@@ -499,7 +608,8 @@ export function ProjectSelector({
         canvasNodes,
         canvasEdges,
         canvasLayers,
-        files
+        files,
+        databases
       };
 
       onConfirm(result);
@@ -531,6 +641,7 @@ export function ProjectSelector({
     setSelectedEdges(new Set());
     setSelectedLayers(new Set());
     setSelectedFiles(new Set());
+    setSelectedDatabaseItems(new Set());
   };
 
   const getTotalSelected = () => {
@@ -544,7 +655,8 @@ export function ProjectSelector({
       selectedNodes.size +
       selectedEdges.size +
       selectedLayers.size +
-      selectedFiles.size
+      selectedFiles.size +
+      selectedDatabaseItems.size
     );
   };
 
@@ -641,6 +753,20 @@ export function ProjectSelector({
             shareToken={shareToken}
             selectedFiles={selectedFiles}
             onSelectionChange={setSelectedFiles}
+          />
+        );
+
+      case "databases":
+        return (
+          <DatabaseSchemaSelector
+            projectId={projectId}
+            shareToken={shareToken}
+            selectedDatabaseItems={selectedDatabaseItems}
+            onSelectionChange={setSelectedDatabaseItems}
+            includeSampleData={includeSampleData}
+            onIncludeSampleDataChange={setIncludeSampleData}
+            sampleDataRows={sampleDataRows}
+            onSampleDataRowsChange={setSampleDataRows}
           />
         );
 

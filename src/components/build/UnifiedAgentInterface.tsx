@@ -402,6 +402,7 @@ export function UnifiedAgentInterface({
             canvasNodes: attachedContext.canvasNodes.length > 0 ? attachedContext.canvasNodes : undefined,
             canvasEdges: attachedContext.canvasEdges.length > 0 ? attachedContext.canvasEdges : undefined,
             files: attachedContext.files?.length > 0 ? attachedContext.files : undefined,
+            databases: attachedContext.databases?.length > 0 ? attachedContext.databases : undefined,
           } : {},
         },
         signal: abortControllerRef.current.signal,
