@@ -144,7 +144,7 @@ export function AgentChatViewer({ projectId, shareToken }: AgentChatViewerProps)
                               <p className="text-sm whitespace-pre-wrap">{parsed.reasoning}</p>
                             </div>
                           )}
-                          {parsed.operations.length > 0 && (
+                          {Array.isArray(parsed.operations) && parsed.operations.length > 0 && (
                             <div>
                               <p className="text-xs font-semibold mb-2 text-muted-foreground">Operations:</p>
                               <div className="space-y-1">
