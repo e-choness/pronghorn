@@ -348,7 +348,7 @@ async function fetchAllFiles() {
   
   // Fetch staged files (overwrite committed if staging enabled)
   if (CONFIG.rebuildOnStaging) {
-    const { data: stagedFiles, error: stagingError } = await supabase.rpc('get_staging_with_token', {
+    const { data: stagedFiles, error: stagingError } = await supabase.rpc('get_staged_changes_with_token', {
       p_repo_id: CONFIG.repoId,
       p_token: CONFIG.shareToken || null,
     });
@@ -397,13 +397,20 @@ async function writeFilesToDisk(files) {
       fs.mkdirSync(dirPath, { recursive: true });
     }
     
+    // Track package.json changes for npm install - ONLY IF CONTENT CHANGED
+    if (path.basename(file.path) === 'package.json') {
+      let existingContent = '';
+      if (fs.existsSync(filePath)) {
+        existingContent = fs.readFileSync(filePath, 'utf8');
+      }
+      // Only trigger npm install if content is actually different
+      if (existingContent !== (file.content || '')) {
+        changedPackageJsonDirs.push(dirPath);
+      }
+    }
+    
     // Write file
     fs.writeFileSync(filePath, file.content || '', 'utf8');
-    
-    // Track package.json changes for npm install
-    if (path.basename(file.path) === 'package.json') {
-      changedPackageJsonDirs.push(dirPath);
-    }
   }
   
   console.log(\`[Pronghorn] Wrote \${files.length} files to disk\`);
