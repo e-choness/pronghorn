@@ -55,6 +55,11 @@ export default function Terms() {
                     <strong>Features are subject to change without notice.</strong> Functionality may be added, modified, 
                     or removed at any time during the testing period.
                   </p>
+                  <p>
+                    <strong>No guarantee of data retention.</strong> Projects, accounts, repositories, services, databases, 
+                    and any other artifacts created within or imported to Pronghorn may be deleted without notice. We bear 
+                    no liability for the loss of work.
+                  </p>
                   <p className="text-sm bg-amber-100 p-4 rounded-lg">
                     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
                     EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR 
@@ -232,6 +237,7 @@ export default function Terms() {
           <div className="flex items-center gap-6 text-sm text-gray-500">
             <Link to="/terms" className="hover:text-[hsl(350,80%,60%)] transition-colors">Terms of Use</Link>
             <Link to="/privacy" className="hover:text-[hsl(350,80%,60%)] transition-colors">Privacy Policy</Link>
+            <Link to="/license" className="hover:text-[hsl(350,80%,60%)] transition-colors">License</Link>
           </div>
           <p className="text-sm text-gray-500">© 2025 Government of Alberta</p>
         </div>
