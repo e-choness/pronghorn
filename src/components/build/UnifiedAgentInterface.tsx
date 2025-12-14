@@ -911,7 +911,7 @@ export function UnifiedAgentInterface({
                   )}
                   
                   {/* ALL MODES: Show operations */}
-                  {parsed.operations.length > 0 && (
+                  {Array.isArray(parsed.operations) && parsed.operations.length > 0 && (
                     <div>
                       <p className="text-xs font-semibold mb-2 text-muted-foreground">Operations:</p>
                       <div className="space-y-1">
