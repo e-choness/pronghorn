@@ -196,6 +196,7 @@ export default function Privacy() {
           <div className="flex items-center gap-6 text-sm text-gray-500">
             <Link to="/terms" className="hover:text-[hsl(350,80%,60%)] transition-colors">Terms of Use</Link>
             <Link to="/privacy" className="hover:text-[hsl(350,80%,60%)] transition-colors">Privacy Policy</Link>
+            <Link to="/license" className="hover:text-[hsl(350,80%,60%)] transition-colors">License</Link>
           </div>
           <p className="text-sm text-gray-500">© 2025 Government of Alberta</p>
         </div>
