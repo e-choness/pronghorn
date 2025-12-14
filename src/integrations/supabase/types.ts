@@ -3106,9 +3106,22 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_repo_file_paths_with_token: {
+        Args: { p_path_prefix?: string; p_repo_id: string; p_token?: string }
+        Returns: {
+          id: string
+          is_binary: boolean
+          is_staged: boolean
+          operation_type: string
+          path: string
+          size_bytes: number
+          updated_at: string
+        }[]
+      }
       get_repo_files_with_token: {
         Args: { p_path_prefix?: string; p_repo_id: string; p_token?: string }
         Returns: {
+          content: string
           id: string
           is_binary: boolean
           is_staged: boolean
