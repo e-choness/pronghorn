@@ -829,18 +829,6 @@ Use them to understand context and inform your file operations.` : ''}`;
       iteration++;
       console.log(`\n=== Iteration ${iteration} ===`);
 
-      // Build full input prompt for logging
-      const fullInputPrompt = JSON.stringify({
-        systemPrompt: systemPrompt.slice(0, 5000) + (systemPrompt.length > 5000 ? '...[truncated for log]' : ''),
-        systemPromptFullLength: systemPrompt.length,
-        conversationHistory: conversationHistory,
-        timestamp: new Date().toISOString()
-      }, null, 2);
-      const inputCharCount = systemPrompt.length + conversationHistory.reduce((acc, msg) => acc + msg.content.length, 0);
-
-      // Call LLM based on provider
-      let llmResponse: any;
-
       // Build conversation with ephemeral context injected for this iteration only
       let conversationForLLM = [...conversationHistory];
       if (ephemeralContext.length > 0) {
@@ -851,8 +839,20 @@ Use them to understand context and inform your file operations.` : ''}`;
           content: `[EPHEMERAL CONTEXT - Full operation results from last iteration]\n${JSON.stringify(ephemeralContext, null, 2)}\n[END EPHEMERAL CONTEXT]`,
         });
       }
-      // Clear ephemeral context after injection (will be repopulated after this iteration's operations)
+      // Clear ephemeral context after building conversationForLLM (will be repopulated after this iteration's operations)
+      const ephemeralContextForLog = [...ephemeralContext]; // Keep copy for logging
       ephemeralContext = [];
+
+      // Build full input prompt for logging - MUST include the EXACT prompt sent to LLM including ephemeral context
+      const fullInputPrompt = JSON.stringify({
+        systemPrompt: systemPrompt,
+        conversationForLLM: conversationForLLM,
+        timestamp: new Date().toISOString()
+      }, null, 2);
+      const inputCharCount = systemPrompt.length + conversationForLLM.reduce((acc, msg) => acc + msg.content.length, 0);
+
+      // Call LLM based on provider
+      let llmResponse: any;
 
       if (selectedModel.startsWith("gemini")) {
         // Gemini API with system instruction
