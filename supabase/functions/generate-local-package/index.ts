@@ -61,15 +61,15 @@ serve(async (req) => {
     // Create ZIP file
     const zip = new JSZip();
 
-    // 1. Create .env file
-    const envContent = generateEnvFile(deployment, shareToken);
+    // 1. Create .env file with real-time config
+    const envContent = generateEnvFile(deployment, shareToken, repo, SUPABASE_URL, SUPABASE_ANON_KEY);
     zip.file('.env', envContent);
 
-    // 2. Create package.json
+    // 2. Create package.json with Supabase client for real-time
     const packageJson = generatePackageJson(deployment);
     zip.file('package.json', JSON.stringify(packageJson, null, 2));
 
-    // 3. Create the runner script
+    // 3. Create the new real-time runner script
     const runnerScript = generateRunnerScript(deployment, repo);
     zip.file('pronghorn-runner.js', runnerScript);
 
@@ -77,19 +77,24 @@ serve(async (req) => {
     const readme = generateReadme(deployment, project, repo);
     zip.file('README.md', readme);
 
-    // 5. Create a simple start script
-    const startScript = `#!/bin/bash
+    // 5. Create start scripts
+    const startScriptBash = `#!/bin/bash
 npm install
 node pronghorn-runner.js
 `;
-    zip.file('start.sh', startScript);
+    zip.file('start.sh', startScriptBash);
+
+    const startScriptWindows = `@echo off
+npm install
+node pronghorn-runner.js
+`;
+    zip.file('start.bat', startScriptWindows);
 
     // Generate the ZIP as base64
     const zipContent = await zip.generateAsync({ type: 'base64' });
 
     console.log('[generate-local-package] Package generated successfully');
 
-    // Return as base64 that client can decode
     return new Response(JSON.stringify({ 
       success: true, 
       data: zipContent,
@@ -106,23 +111,50 @@ node pronghorn-runner.js
   }
 });
 
-function generateEnvFile(deployment: any, shareToken?: string): string {
+function generateEnvFile(deployment: any, shareToken: string | undefined, repo: any, supabaseUrl: string, supabaseAnonKey: string): string {
   const lines = [
-    '# Pronghorn Local Development Configuration',
+    '# Pronghorn Real-Time Local Development Configuration',
     `# Generated for: ${deployment.name}`,
     `# Environment: ${deployment.environment}`,
     '',
-    '# Pronghorn API Configuration',
-    `PRONGHORN_API_URL=https://obkzdksfayygnrzdqoam.supabase.co`,
-    `PRONGHORN_DEPLOYMENT_ID=${deployment.id}`,
+    '# ===========================================',
+    '# REBUILD TRIGGERS (set which events trigger rebuilds)',
+    '# ===========================================',
+    '# REBUILD_ON_STAGING: Rebuild when files are staged (immediate, before commit)',
+    '# REBUILD_ON_FILES: Rebuild when files are committed (after commit)',
+    '# REBUILD_ON_GIT: Rebuild when GitHub repo changes (requires PAT)',
+    '',
+    'REBUILD_ON_STAGING=true',
+    'REBUILD_ON_FILES=true',
+    'REBUILD_ON_GIT=false',
+    '',
+    '# ===========================================',
+    '# GIT CONFIGURATION (only if REBUILD_ON_GIT=true)',
+    '# ===========================================',
+    repo ? `# GITHUB_REPO=${repo.organization}/${repo.repo}` : '# GITHUB_REPO=org/repo',
+    `# GITHUB_BRANCH=${deployment.branch || 'main'}`,
+    '# GITHUB_PAT=your_personal_access_token',
+    '',
+    '# ===========================================',
+    '# SUPABASE / PRONGHORN CONFIGURATION',
+    '# ===========================================',
+    `SUPABASE_URL=${supabaseUrl}`,
+    `SUPABASE_ANON_KEY=${supabaseAnonKey}`,
     `PRONGHORN_PROJECT_ID=${deployment.project_id}`,
+    repo ? `PRONGHORN_REPO_ID=${repo.id}` : '# PRONGHORN_REPO_ID=<repo-uuid>',
+    `PRONGHORN_DEPLOYMENT_ID=${deployment.id}`,
     shareToken ? `PRONGHORN_SHARE_TOKEN=${shareToken}` : '# PRONGHORN_SHARE_TOKEN=<your-token>',
     '',
-    '# Application Configuration',
+    '# ===========================================',
+    '# APPLICATION CONFIGURATION',
+    '# ===========================================',
     `APP_ENVIRONMENT=${deployment.environment}`,
-    `APP_PORT=3000`,
+    'APP_PORT=3000',
+    `PROJECT_TYPE=${deployment.project_type || 'node'}`,
     '',
-    '# User Environment Variables',
+    '# ===========================================',
+    '# USER ENVIRONMENT VARIABLES',
+    '# ===========================================',
   ];
 
   // Add user-defined env vars
@@ -148,14 +180,13 @@ function generatePackageJson(deployment: any): object {
   return {
     name: `${deployment.environment}-${deployment.name}-local`,
     version: '1.0.0',
-    description: `Local development runner for ${deployment.name}`,
+    description: `Pronghorn Real-Time Local Development Runner for ${deployment.name}`,
     main: 'pronghorn-runner.js',
     scripts: {
       start: 'node pronghorn-runner.js',
-      dev: 'node pronghorn-runner.js --watch',
     },
     dependencies: {
-      'chokidar': '^3.5.3',
+      '@supabase/supabase-js': '^2.45.0',
       'dotenv': '^16.3.1',
       'node-fetch': '^3.3.2',
     },
@@ -167,13 +198,14 @@ function generateRunnerScript(deployment: any, repo: any): string {
   
   return `#!/usr/bin/env node
 /**
- * Pronghorn Local Development Runner
+ * Pronghorn Real-Time Local Development Runner
  * 
  * This script:
- * 1. Clones/pulls the repository
- * 2. Watches for file changes
- * 3. Runs build/dev commands
- * 4. Reports errors back to Pronghorn for AI-assisted fixing
+ * 1. Connects to Supabase Realtime to watch for file changes
+ * 2. Pulls files from repo_files/repo_staging directly from database
+ * 3. Writes files to ./app/ folder
+ * 4. Runs npm run dev (Vite) or nodemon for hot reload
+ * 5. Captures errors and sends telemetry back to Pronghorn
  */
 
 require('dotenv').config();
@@ -181,230 +213,457 @@ const { spawn, execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
+// Dynamic import for ESM modules
+let supabase = null;
+
 const CONFIG = {
-  repoUrl: '${repoUrl}',
-  branch: '${deployment.branch || 'main'}',
-  runFolder: '${deployment.run_folder || '/'}',
-  buildFolder: '${deployment.build_folder || 'dist'}',
+  // Rebuild triggers
+  rebuildOnStaging: process.env.REBUILD_ON_STAGING === 'true',
+  rebuildOnFiles: process.env.REBUILD_ON_FILES === 'true',
+  rebuildOnGit: process.env.REBUILD_ON_GIT === 'true',
+  
+  // Git config (for REBUILD_ON_GIT)
+  githubRepo: process.env.GITHUB_REPO,
+  githubBranch: process.env.GITHUB_BRANCH || '${deployment.branch || 'main'}',
+  githubPat: process.env.GITHUB_PAT,
+  
+  // Supabase config
+  supabaseUrl: process.env.SUPABASE_URL,
+  supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
+  
+  // Pronghorn config
+  projectId: process.env.PRONGHORN_PROJECT_ID,
+  repoId: process.env.PRONGHORN_REPO_ID,
+  deploymentId: process.env.PRONGHORN_DEPLOYMENT_ID,
+  shareToken: process.env.PRONGHORN_SHARE_TOKEN,
+  
+  // App config
+  projectType: process.env.PROJECT_TYPE || '${deployment.project_type || 'node'}',
   runCommand: '${deployment.run_command || 'npm run dev'}',
   buildCommand: '${deployment.build_command || 'npm run build'}',
-  deploymentId: process.env.PRONGHORN_DEPLOYMENT_ID,
-  projectId: process.env.PRONGHORN_PROJECT_ID,
-  apiUrl: process.env.PRONGHORN_API_URL,
-  shareToken: process.env.PRONGHORN_SHARE_TOKEN,
+  runFolder: '${deployment.run_folder || '/'}',
 };
 
-const PROJECT_DIR = path.join(process.cwd(), 'project');
+const APP_DIR = path.join(process.cwd(), 'app');
+let devProcess = null;
+let isRestarting = false;
 
-async function reportIssue(issueType, message, stackTrace = null, filePath = null, lineNumber = null) {
-  if (!CONFIG.apiUrl || !CONFIG.deploymentId) {
-    console.error('[Pronghorn] Cannot report issue - missing configuration');
+// ============================================
+// SUPABASE CLIENT INITIALIZATION
+// ============================================
+
+async function initSupabase() {
+  const { createClient } = await import('@supabase/supabase-js');
+  supabase = createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey);
+  console.log('[Pronghorn] Supabase client initialized');
+}
+
+// ============================================
+// TELEMETRY & ERROR REPORTING
+// ============================================
+
+async function reportLog(logType, message, stackTrace = null, filePath = null, lineNumber = null) {
+  if (!CONFIG.supabaseUrl || !CONFIG.deploymentId) {
+    console.error('[Pronghorn] Cannot report log - missing configuration');
     return;
   }
 
   try {
     const fetch = (await import('node-fetch')).default;
-    await fetch(\`\${CONFIG.apiUrl}/functions/v1/report-local-issue\`, {
+    await fetch(\`\${CONFIG.supabaseUrl}/functions/v1/report-local-issue\`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         deploymentId: CONFIG.deploymentId,
         shareToken: CONFIG.shareToken,
-        issueType,
-        message,
-        stackTrace,
+        logType,
+        message: message.slice(0, 5000),
+        stackTrace: stackTrace?.slice(0, 20000),
         filePath,
         lineNumber,
       }),
     });
-    console.log('[Pronghorn] Issue reported successfully');
+    console.log(\`[Pronghorn] \${logType} log reported\`);
   } catch (err) {
-    console.error('[Pronghorn] Failed to report issue:', err.message);
+    console.error('[Pronghorn] Failed to report log:', err.message);
   }
 }
 
 function parseErrorOutput(output) {
-  // Try to extract file path and line number from common error formats
   const patterns = [
-    // Node.js/JavaScript: "at /path/to/file.js:123:45"
     /at\\s+(?:.*\\s+)?\\(?([^:]+):(\\d+):(\\d+)\\)?/,
-    // TypeScript: "src/file.ts(10,5):"
     /([^(\\s]+)\\((\\d+),(\\d+)\\)/,
-    // ESLint/Build: "/path/to/file.js:10:5"
     /^([^:]+):(\\d+):(\\d+)/m,
+    /File:\\s*([^\\n]+).*Line:\\s*(\\d+)/is,
   ];
 
   for (const pattern of patterns) {
     const match = output.match(pattern);
     if (match) {
-      return {
-        filePath: match[1],
-        lineNumber: parseInt(match[2], 10),
-      };
+      return { filePath: match[1], lineNumber: parseInt(match[2], 10) };
     }
   }
   return { filePath: null, lineNumber: null };
 }
 
-function runCommand(command, cwd) {
-  return new Promise((resolve, reject) => {
-    console.log(\`[Pronghorn] Running: \${command}\`);
+// ============================================
+// FILE SYNC FROM DATABASE
+// ============================================
+
+async function fetchAllFiles() {
+  console.log('[Pronghorn] Fetching all files from database...');
+  
+  const files = [];
+  
+  // Fetch committed files
+  if (CONFIG.rebuildOnFiles || CONFIG.rebuildOnStaging) {
+    const { data: repoFiles, error: filesError } = await supabase.rpc('get_repo_files_with_token', {
+      p_repo_id: CONFIG.repoId,
+      p_token: CONFIG.shareToken || null,
+    });
     
-    const [cmd, ...args] = command.split(' ');
-    const proc = spawn(cmd, args, {
-      cwd,
-      shell: true,
-      stdio: ['inherit', 'pipe', 'pipe'],
-      env: { ...process.env, FORCE_COLOR: '1' },
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    proc.stdout.on('data', (data) => {
-      const text = data.toString();
-      stdout += text;
-      process.stdout.write(text);
-    });
-
-    proc.stderr.on('data', (data) => {
-      const text = data.toString();
-      stderr += text;
-      process.stderr.write(text);
-    });
-
-    proc.on('close', (code) => {
-      if (code === 0) {
-        resolve({ stdout, stderr });
-      } else {
-        const errorInfo = parseErrorOutput(stderr || stdout);
-        reject({
-          code,
-          message: stderr || stdout,
-          ...errorInfo,
-        });
-      }
-    });
-
-    proc.on('error', (err) => {
-      reject({ message: err.message });
-    });
-  });
-}
-
-async function setupProject() {
-  console.log('[Pronghorn] Setting up project...');
-
-  if (!CONFIG.repoUrl) {
-    console.log('[Pronghorn] No repository URL configured. Skipping clone.');
-    return;
-  }
-
-  if (!fs.existsSync(PROJECT_DIR)) {
-    console.log('[Pronghorn] Cloning repository...');
-    try {
-      execSync(\`git clone -b \${CONFIG.branch} \${CONFIG.repoUrl} project\`, { stdio: 'inherit' });
-    } catch (err) {
-      await reportIssue('error', \`Failed to clone repository: \${err.message}\`);
-      throw err;
-    }
-  } else {
-    console.log('[Pronghorn] Pulling latest changes...');
-    try {
-      execSync(\`git -C project pull origin \${CONFIG.branch}\`, { stdio: 'inherit' });
-    } catch (err) {
-      console.warn('[Pronghorn] Warning: Failed to pull latest changes:', err.message);
+    if (filesError) {
+      console.error('[Pronghorn] Error fetching repo files:', filesError.message);
+    } else if (repoFiles) {
+      repoFiles.forEach(f => {
+        if (!f.is_binary) {
+          files.push({ path: f.path, content: f.content, source: 'files' });
+        }
+      });
     }
   }
-}
-
-async function runBuild() {
-  if (!CONFIG.buildCommand) return;
   
-  const cwd = path.join(PROJECT_DIR, CONFIG.runFolder.replace(/^\\//, ''));
-  
-  try {
-    await runCommand(CONFIG.buildCommand, cwd);
-    console.log('[Pronghorn] Build completed successfully');
-  } catch (err) {
-    console.error('[Pronghorn] Build failed:', err.message);
-    await reportIssue('error', \`Build failed: \${err.message}\`, err.message, err.filePath, err.lineNumber);
-    throw err;
+  // Fetch staged files (overwrite committed if staging enabled)
+  if (CONFIG.rebuildOnStaging) {
+    const { data: stagedFiles, error: stagingError } = await supabase.rpc('get_staging_with_token', {
+      p_repo_id: CONFIG.repoId,
+      p_token: CONFIG.shareToken || null,
+    });
+    
+    if (stagingError) {
+      console.error('[Pronghorn] Error fetching staging:', stagingError.message);
+    } else if (stagedFiles) {
+      stagedFiles.forEach(f => {
+        if (f.operation_type === 'delete') {
+          // Mark for deletion
+          const idx = files.findIndex(existing => existing.path === f.file_path);
+          if (idx >= 0) files.splice(idx, 1);
+        } else if (!f.is_binary) {
+          // Add or replace
+          const idx = files.findIndex(existing => existing.path === f.file_path);
+          if (idx >= 0) {
+            files[idx] = { path: f.file_path, content: f.new_content, source: 'staging' };
+          } else {
+            files.push({ path: f.file_path, content: f.new_content, source: 'staging' });
+          }
+        }
+      });
+    }
   }
+  
+  console.log(\`[Pronghorn] Fetched \${files.length} files\`);
+  return files;
 }
 
-async function runDev() {
-  const cwd = path.join(PROJECT_DIR, CONFIG.runFolder.replace(/^\\//, ''));
+async function writeFilesToDisk(files) {
+  console.log('[Pronghorn] Writing files to ./app/ ...');
   
-  console.log('[Pronghorn] Starting development server...');
-  console.log(\`[Pronghorn] Working directory: \${cwd}\`);
+  // Ensure app directory exists
+  if (!fs.existsSync(APP_DIR)) {
+    fs.mkdirSync(APP_DIR, { recursive: true });
+  }
+  
+  for (const file of files) {
+    const filePath = path.join(APP_DIR, file.path);
+    const dirPath = path.dirname(filePath);
+    
+    // Create directory if needed
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+    }
+    
+    // Write file
+    fs.writeFileSync(filePath, file.content || '', 'utf8');
+  }
+  
+  console.log(\`[Pronghorn] Wrote \${files.length} files to disk\`);
+}
+
+// ============================================
+// DEV SERVER MANAGEMENT
+// ============================================
+
+function startDevServer() {
+  const cwd = path.join(APP_DIR, CONFIG.runFolder.replace(/^\\//, ''));
+  
+  // Check if package.json exists and install deps
+  const packageJsonPath = path.join(cwd, 'package.json');
+  if (fs.existsSync(packageJsonPath)) {
+    console.log('[Pronghorn] Installing dependencies...');
+    try {
+      execSync('npm install', { cwd, stdio: 'inherit' });
+    } catch (err) {
+      console.error('[Pronghorn] npm install failed:', err.message);
+      reportLog('error', \`npm install failed: \${err.message}\`);
+    }
+  }
+  
+  console.log('[Pronghorn] Starting dev server...');
   console.log(\`[Pronghorn] Command: \${CONFIG.runCommand}\`);
+  console.log(\`[Pronghorn] Directory: \${cwd}\`);
   
   const [cmd, ...args] = CONFIG.runCommand.split(' ');
-  const proc = spawn(cmd, args, {
+  devProcess = spawn(cmd, args, {
     cwd,
     shell: true,
     stdio: ['inherit', 'pipe', 'pipe'],
     env: { ...process.env, FORCE_COLOR: '1' },
   });
 
-  proc.stdout.on('data', (data) => {
+  devProcess.stdout.on('data', (data) => {
     process.stdout.write(data);
   });
 
-  proc.stderr.on('data', async (data) => {
+  devProcess.stderr.on('data', async (data) => {
     const text = data.toString();
     process.stderr.write(text);
     
-    // Check for errors and report them
-    if (text.includes('Error') || text.includes('error')) {
+    // Report errors
+    if (text.includes('Error') || text.includes('error') || text.includes('ERROR')) {
       const errorInfo = parseErrorOutput(text);
-      await reportIssue('error', text.slice(0, 500), text, errorInfo.filePath, errorInfo.lineNumber);
+      await reportLog('error', text.slice(0, 2000), text, errorInfo.filePath, errorInfo.lineNumber);
     }
   });
 
-  proc.on('close', (code) => {
-    console.log(\`[Pronghorn] Process exited with code \${code}\`);
-    if (code !== 0) {
-      reportIssue('error', \`Process exited with code \${code}\`);
+  devProcess.on('close', (code) => {
+    console.log(\`[Pronghorn] Dev server exited with code \${code}\`);
+    if (code !== 0 && !isRestarting) {
+      reportLog('error', \`Dev server exited with code \${code}\`);
     }
-  });
-
-  // Handle graceful shutdown
-  process.on('SIGINT', () => {
-    console.log('\\n[Pronghorn] Shutting down...');
-    proc.kill('SIGINT');
-    process.exit(0);
+    devProcess = null;
   });
 }
 
+function stopDevServer() {
+  return new Promise((resolve) => {
+    if (!devProcess) {
+      resolve();
+      return;
+    }
+    
+    console.log('[Pronghorn] Stopping dev server...');
+    isRestarting = true;
+    
+    devProcess.on('close', () => {
+      isRestarting = false;
+      resolve();
+    });
+    
+    devProcess.kill('SIGTERM');
+    
+    // Force kill after 5 seconds
+    setTimeout(() => {
+      if (devProcess) {
+        devProcess.kill('SIGKILL');
+      }
+      isRestarting = false;
+      resolve();
+    }, 5000);
+  });
+}
+
+async function restartDevServer() {
+  await stopDevServer();
+  startDevServer();
+}
+
+// ============================================
+// REALTIME SUBSCRIPTION
+// ============================================
+
+async function setupRealtimeSubscription() {
+  console.log('[Pronghorn] Setting up real-time subscriptions...');
+  
+  const channelName = \`local-runner-\${CONFIG.repoId}\`;
+  
+  const channel = supabase
+    .channel(channelName)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'repo_staging',
+        filter: \`repo_id=eq.\${CONFIG.repoId}\`,
+      },
+      async (payload) => {
+        if (!CONFIG.rebuildOnStaging) return;
+        console.log('[Pronghorn] Staging change detected:', payload.eventType);
+        await handleFileChange('staging');
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'repo_files',
+        filter: \`repo_id=eq.\${CONFIG.repoId}\`,
+      },
+      async (payload) => {
+        if (!CONFIG.rebuildOnFiles) return;
+        console.log('[Pronghorn] File change detected:', payload.eventType);
+        await handleFileChange('files');
+      }
+    )
+    .subscribe((status) => {
+      console.log(\`[Pronghorn] Realtime subscription: \${status}\`);
+      if (status === 'SUBSCRIBED') {
+        console.log('[Pronghorn] ✓ Listening for file changes...');
+      }
+    });
+  
+  return channel;
+}
+
+let debounceTimer = null;
+async function handleFileChange(source) {
+  // Debounce rapid changes
+  if (debounceTimer) clearTimeout(debounceTimer);
+  
+  debounceTimer = setTimeout(async () => {
+    console.log(\`[Pronghorn] Processing \${source} change...\`);
+    
+    try {
+      // Fetch and write files
+      const files = await fetchAllFiles();
+      await writeFilesToDisk(files);
+      
+      // Vite/webpack handle HMR automatically, but for Node.js we restart
+      if (CONFIG.projectType === 'node' || CONFIG.projectType === 'express') {
+        await restartDevServer();
+      } else {
+        console.log('[Pronghorn] Files updated - HMR should refresh automatically');
+      }
+      
+      await reportLog('info', \`Files synced from \${source} (\${files.length} files)\`);
+    } catch (err) {
+      console.error('[Pronghorn] Error handling file change:', err.message);
+      await reportLog('error', \`Failed to sync files: \${err.message}\`);
+    }
+  }, 500);
+}
+
+// ============================================
+// GIT POLLING (if REBUILD_ON_GIT enabled)
+// ============================================
+
+let lastCommitSha = null;
+
+async function pollGitHub() {
+  if (!CONFIG.rebuildOnGit || !CONFIG.githubRepo || !CONFIG.githubPat) {
+    return;
+  }
+  
+  try {
+    const fetch = (await import('node-fetch')).default;
+    const [owner, repo] = CONFIG.githubRepo.split('/');
+    const url = \`https://api.github.com/repos/\${owner}/\${repo}/commits/\${CONFIG.githubBranch}\`;
+    
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': \`token \${CONFIG.githubPat}\`,
+        'Accept': 'application/vnd.github.v3+json',
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error(\`GitHub API error: \${response.status}\`);
+    }
+    
+    const data = await response.json();
+    
+    if (lastCommitSha && lastCommitSha !== data.sha) {
+      console.log(\`[Pronghorn] New GitHub commit detected: \${data.sha.slice(0, 7)}\`);
+      // For Git mode, we'd need to pull from Git, not database
+      // This is a placeholder - actual implementation would clone/pull
+      await reportLog('info', \`GitHub commit detected: \${data.sha.slice(0, 7)}\`);
+    }
+    
+    lastCommitSha = data.sha;
+  } catch (err) {
+    console.error('[Pronghorn] GitHub polling error:', err.message);
+  }
+}
+
+// ============================================
+// MAIN
+// ============================================
+
 async function main() {
-  console.log('='.repeat(50));
-  console.log('  Pronghorn Local Development Runner');
-  console.log('='.repeat(50));
-  console.log(\`  Deployment: \${CONFIG.deploymentId}\`);
-  console.log(\`  Environment: ${deployment.environment}\`);
-  console.log('='.repeat(50));
+  console.log('');
+  console.log('╔══════════════════════════════════════════════════════════╗');
+  console.log('║     Pronghorn Real-Time Local Development Runner         ║');
+  console.log('╠══════════════════════════════════════════════════════════╣');
+  console.log(\`║  Deployment: \${CONFIG.deploymentId?.slice(0, 8) || 'N/A'}...                               ║\`);
+  console.log(\`║  Project Type: \${CONFIG.projectType.padEnd(40)}   ║\`);
+  console.log(\`║  Rebuild on Staging: \${CONFIG.rebuildOnStaging ? 'YES' : 'NO '}                              ║\`);
+  console.log(\`║  Rebuild on Files: \${CONFIG.rebuildOnFiles ? 'YES' : 'NO '}                                ║\`);
+  console.log(\`║  Rebuild on Git: \${CONFIG.rebuildOnGit ? 'YES' : 'NO '}                                  ║\`);
+  console.log('╚══════════════════════════════════════════════════════════╝');
   console.log('');
 
-  try {
-    await setupProject();
-    
-    // Install dependencies if package.json exists
-    const packageJsonPath = path.join(PROJECT_DIR, CONFIG.runFolder.replace(/^\\//, ''), 'package.json');
-    if (fs.existsSync(packageJsonPath)) {
-      console.log('[Pronghorn] Installing dependencies...');
-      execSync('npm install', { 
-        cwd: path.join(PROJECT_DIR, CONFIG.runFolder.replace(/^\\//, '')),
-        stdio: 'inherit' 
-      });
-    }
-
-    await runDev();
-  } catch (err) {
-    console.error('[Pronghorn] Fatal error:', err.message);
+  if (!CONFIG.supabaseUrl || !CONFIG.supabaseAnonKey) {
+    console.error('[Pronghorn] Missing Supabase configuration in .env');
     process.exit(1);
   }
+  
+  if (!CONFIG.repoId) {
+    console.error('[Pronghorn] Missing PRONGHORN_REPO_ID in .env');
+    process.exit(1);
+  }
+
+  try {
+    // Initialize Supabase
+    await initSupabase();
+    
+    // Initial file sync
+    console.log('[Pronghorn] Performing initial file sync...');
+    const files = await fetchAllFiles();
+    await writeFilesToDisk(files);
+    
+    await reportLog('info', \`Initial sync complete (\${files.length} files)\`);
+    
+    // Setup realtime subscription
+    await setupRealtimeSubscription();
+    
+    // Start GitHub polling if enabled
+    if (CONFIG.rebuildOnGit) {
+      setInterval(pollGitHub, 30000); // Poll every 30 seconds
+      pollGitHub(); // Initial poll
+    }
+    
+    // Start dev server
+    startDevServer();
+    
+  } catch (err) {
+    console.error('[Pronghorn] Fatal error:', err.message);
+    await reportLog('error', \`Fatal error: \${err.message}\`);
+    process.exit(1);
+  }
+
+  // Handle graceful shutdown
+  process.on('SIGINT', async () => {
+    console.log('\\n[Pronghorn] Shutting down...');
+    await stopDevServer();
+    await reportLog('info', 'Local runner stopped');
+    process.exit(0);
+  });
+  
+  process.on('SIGTERM', async () => {
+    await stopDevServer();
+    process.exit(0);
+  });
 }
 
 main();
@@ -412,62 +671,87 @@ main();
 }
 
 function generateReadme(deployment: any, project: any, repo: any): string {
-  return `# ${deployment.environment.toUpperCase()}-${deployment.name} Local Development
+  return `# ${deployment.environment.toUpperCase()}-${deployment.name} Real-Time Local Development
 
-This package contains everything you need to run your Pronghorn project locally.
+This package provides **real-time synchronization** with Pronghorn. Files are pulled directly from the database and automatically updated when changes occur.
 
-## Quick Start
+## 🚀 Quick Start
 
-1. Install Node.js 18+ if you haven't already
-2. Run the following commands:
+### Windows
+\`\`\`cmd
+start.bat
+\`\`\`
 
+### Linux/Mac
 \`\`\`bash
 chmod +x start.sh
 ./start.sh
 \`\`\`
 
-Or manually:
-
+### Or manually
 \`\`\`bash
 npm install
 npm start
 \`\`\`
 
-## Configuration
+## ⚙️ Configuration
 
-Edit the \`.env\` file to configure:
-- **PRONGHORN_SHARE_TOKEN**: Your project access token
-- **APP_PORT**: The port to run on (default: 3000)
-- Any additional environment variables your app needs
+Edit the \`.env\` file to configure behavior:
 
-## Project Details
+### Rebuild Triggers
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| \`REBUILD_ON_STAGING\` | \`true\` | Sync when files are staged (before commit) |
+| \`REBUILD_ON_FILES\` | \`true\` | Sync when files are committed |
+| \`REBUILD_ON_GIT\` | \`false\` | Poll GitHub for changes (requires PAT) |
+
+### Required Configuration
+
+| Variable | Description |
+|----------|-------------|
+| \`PRONGHORN_SHARE_TOKEN\` | Your project access token |
+| \`PRONGHORN_REPO_ID\` | Repository ID (auto-filled) |
+| \`SUPABASE_URL\` | Supabase project URL (auto-filled) |
+| \`SUPABASE_ANON_KEY\` | Supabase anonymous key (auto-filled) |
+
+## 📁 How It Works
+
+1. **Initial Sync**: Downloads all files from Pronghorn database to \`./app/\` folder
+2. **Real-Time Subscription**: Listens for changes to \`repo_staging\` and \`repo_files\` tables
+3. **Hot Reload**: When changes detected:
+   - **Vite/React/Vue**: Files update, HMR automatically refreshes browser
+   - **Node.js/Express**: Server restarts automatically
+4. **Error Telemetry**: Errors are captured and sent back to Pronghorn for AI-assisted debugging
+
+## 📊 Project Details
 
 | Property | Value |
 |----------|-------|
 | Project | ${project?.name || 'Unknown'} |
 | Environment | ${deployment.environment} |
-| Branch | ${deployment.branch || 'main'} |
+| Project Type | ${deployment.project_type || 'node'} |
 | Run Command | \`${deployment.run_command}\` |
 | Build Command | \`${deployment.build_command || 'N/A'}\` |
 ${repo ? `| Repository | https://github.com/${repo.organization}/${repo.repo} |` : ''}
 
-## Error Reporting
+## 🔍 Troubleshooting
 
-This runner automatically reports errors back to Pronghorn.RED for AI-assisted debugging. 
-You can view and fix issues in the Deploy section of your project.
+### "Cannot find module @supabase/supabase-js"
+Run \`npm install\` in this directory.
 
-## Troubleshooting
-
-### "Cannot find module" errors
-Run \`npm install\` in the project directory.
-
-### Git clone fails
-Make sure you have access to the repository. You may need to configure Git credentials.
+### Files not syncing
+1. Check that \`PRONGHORN_SHARE_TOKEN\` is set in \`.env\`
+2. Ensure \`PRONGHORN_REPO_ID\` is correct
+3. Check console for subscription errors
 
 ### Port already in use
-Change the APP_PORT in your .env file.
+Change the \`APP_PORT\` in your \`.env\` file.
+
+### Errors not appearing in Pronghorn
+Verify \`PRONGHORN_DEPLOYMENT_ID\` and \`PRONGHORN_SHARE_TOKEN\` are set.
 
 ---
-Generated by Pronghorn.RED
+Generated by Pronghorn.RED - Real-Time Development Platform
 `;
 }

@@ -1330,6 +1330,69 @@ export type Database = {
           },
         ]
       }
+      project_testing_logs: {
+        Row: {
+          created_at: string
+          deployment_id: string | null
+          file_path: string | null
+          id: string
+          is_resolved: boolean | null
+          line_number: number | null
+          log_type: string
+          message: string
+          metadata: Json | null
+          project_id: string
+          resolved_at: string | null
+          resolved_by: string | null
+          stack_trace: string | null
+        }
+        Insert: {
+          created_at?: string
+          deployment_id?: string | null
+          file_path?: string | null
+          id?: string
+          is_resolved?: boolean | null
+          line_number?: number | null
+          log_type?: string
+          message: string
+          metadata?: Json | null
+          project_id: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          stack_trace?: string | null
+        }
+        Update: {
+          created_at?: string
+          deployment_id?: string | null
+          file_path?: string | null
+          id?: string
+          is_resolved?: boolean | null
+          line_number?: number | null
+          log_type?: string
+          message?: string
+          metadata?: Json | null
+          project_id?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          stack_trace?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_testing_logs_deployment_id_fkey"
+            columns: ["deployment_id"]
+            isOneToOne: false
+            referencedRelation: "project_deployments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_testing_logs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_tokens: {
         Row: {
           created_at: string
@@ -3270,6 +3333,35 @@ export type Database = {
           operation_type: string
         }[]
       }
+      get_testing_logs_with_token: {
+        Args: {
+          p_deployment_id: string
+          p_limit?: number
+          p_token?: string
+          p_unresolved_only?: boolean
+        }
+        Returns: {
+          created_at: string
+          deployment_id: string | null
+          file_path: string | null
+          id: string
+          is_resolved: boolean | null
+          line_number: number | null
+          log_type: string
+          message: string
+          metadata: Json | null
+          project_id: string
+          resolved_at: string | null
+          resolved_by: string | null
+          stack_trace: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "project_testing_logs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       get_user_project_role_with_token: {
         Args: { p_project_id: string; p_token?: string }
         Returns: string
@@ -3792,6 +3884,39 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      insert_testing_log_with_token: {
+        Args: {
+          p_deployment_id: string
+          p_file_path?: string
+          p_line_number?: number
+          p_log_type?: string
+          p_message?: string
+          p_metadata?: Json
+          p_stack_trace?: string
+          p_token?: string
+        }
+        Returns: {
+          created_at: string
+          deployment_id: string | null
+          file_path: string | null
+          id: string
+          is_resolved: boolean | null
+          line_number: number | null
+          log_type: string
+          message: string
+          metadata: Json | null
+          project_id: string
+          resolved_at: string | null
+          resolved_by: string | null
+          stack_trace: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "project_testing_logs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       is_admin: { Args: never; Returns: boolean }
       is_project_owner: { Args: { p_project_id: string }; Returns: boolean }
       is_valid_token_for_project: {
@@ -3955,6 +4080,30 @@ export type Database = {
       reset_repo_files_with_token: {
         Args: { p_repo_id: string; p_token: string }
         Returns: boolean
+      }
+      resolve_testing_log_with_token: {
+        Args: { p_log_id: string; p_token?: string }
+        Returns: {
+          created_at: string
+          deployment_id: string | null
+          file_path: string | null
+          id: string
+          is_resolved: boolean | null
+          line_number: number | null
+          log_type: string
+          message: string
+          metadata: Json | null
+          project_id: string
+          resolved_at: string | null
+          resolved_by: string | null
+          stack_trace: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "project_testing_logs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       rollback_to_commit_with_token: {
         Args: { p_commit_id: string; p_repo_id: string; p_token: string }
