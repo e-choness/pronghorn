@@ -12,6 +12,7 @@ import { ProjectSidebar } from "@/components/layout/ProjectSidebar";
 import { ProjectPageHeader } from "@/components/layout/ProjectPageHeader";
 import DeploymentCard from "@/components/deploy/DeploymentCard";
 import DeploymentDialog from "@/components/deploy/DeploymentDialog";
+import TestingLogsViewer from "@/components/deploy/TestingLogsViewer";
 import type { Database as DBTypes } from "@/integrations/supabase/types";
 
 type Deployment = DBTypes["public"]["Tables"]["project_deployments"]["Row"];
@@ -24,6 +25,7 @@ const Deploy = () => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("cloud");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [selectedLocalDeployment, setSelectedLocalDeployment] = useState<string | null>(null);
 
   const fetchDeployments = async () => {
     if (!projectId || !isTokenSet) return;
@@ -51,6 +53,13 @@ const Deploy = () => {
 
   const cloudDeployments = deployments.filter(d => d.platform === "pronghorn_cloud");
   const localDeployments = deployments.filter(d => d.platform === "local");
+
+  // Auto-select first local deployment for logs
+  useEffect(() => {
+    if (localDeployments.length > 0 && !selectedLocalDeployment) {
+      setSelectedLocalDeployment(localDeployments[0].id);
+    }
+  }, [localDeployments, selectedLocalDeployment]);
 
   return (
     <div className="flex h-screen bg-background">
@@ -146,7 +155,7 @@ const Deploy = () => {
                     Local Development
                   </CardTitle>
                   <CardDescription className="text-xs sm:text-sm">
-                    Download a Node.js package to run locally with hot reload and telemetry.
+                    Download a real-time syncing package. Files update automatically from Pronghorn with hot reload.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -162,6 +171,8 @@ const Deploy = () => {
                           deployment={deployment}
                           shareToken={shareToken}
                           onUpdate={fetchDeployments}
+                          onSelect={() => setSelectedLocalDeployment(deployment.id)}
+                          isSelected={selectedLocalDeployment === deployment.id}
                         />
                       ))}
                     </div>
@@ -177,6 +188,14 @@ const Deploy = () => {
                   )}
                 </CardContent>
               </Card>
+
+              {/* Testing Logs for selected local deployment */}
+              {selectedLocalDeployment && (
+                <TestingLogsViewer
+                  deploymentId={selectedLocalDeployment}
+                  shareToken={shareToken}
+                />
+              )}
             </TabsContent>
 
             <TabsContent value="dedicated-vm" className="space-y-4 mt-4">

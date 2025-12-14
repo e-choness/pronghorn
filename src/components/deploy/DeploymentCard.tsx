@@ -19,6 +19,8 @@ interface DeploymentCardProps {
   deployment: Deployment;
   shareToken: string | null;
   onUpdate: () => void;
+  onSelect?: () => void;
+  isSelected?: boolean;
 }
 
 const statusConfig: Record<string, { icon: React.ReactNode; variant: "default" | "secondary" | "destructive" | "outline"; label: string; pulse?: boolean }> = {
@@ -38,7 +40,7 @@ const platformIcons: Record<string, React.ReactNode> = {
   dedicated_vm: <Server className="h-4 w-4" />,
 };
 
-const DeploymentCard = ({ deployment, shareToken, onUpdate }: DeploymentCardProps) => {
+const DeploymentCard = ({ deployment, shareToken, onUpdate, onSelect, isSelected }: DeploymentCardProps) => {
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isLogsOpen, setIsLogsOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
