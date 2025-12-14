@@ -272,6 +272,7 @@ Deno.serve(async (req) => {
     try {
       console.log(`Broadcasting files_refresh for repo: ${repoId}`);
       const filesChannel = supabaseClient.channel(`repo-files-${repoId}`);
+      await filesChannel.subscribe();
       await filesChannel.send({
         type: "broadcast",
         event: "files_refresh",

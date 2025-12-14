@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { stageFile, unstageFile } from "@/lib/stagingOperations";
 
 export interface BufferedFile {
   id: string;
@@ -115,13 +116,11 @@ export function useFileBuffer({ repoId, shareToken, onFileSaved }: UseFileBuffer
       // SMART UNSTAGE: If content matches original BASELINE, unstage instead of staging
       if (file.content === file.originalContent) {
         console.log("Content reverted to baseline, unstaging file:", filePath);
-        const { error } = await supabase.rpc("unstage_file_with_token", {
-          p_repo_id: repoId,
-          p_file_path: filePath,
-          p_token: shareToken || null,
+        await unstageFile({
+          repoId,
+          shareToken,
+          filePath,
         });
-
-        if (error) throw error;
 
         // Mark as clean and update lastSavedContent
         setBuffer(prev => {
@@ -172,7 +171,7 @@ export function useFileBuffer({ repoId, shareToken, onFileSaved }: UseFileBuffer
           oldContentToUse = "";
         }
 
-        // Remove existing staged row
+        // Remove existing staged row (without broadcast - we'll broadcast after stage)
         await supabase.rpc("unstage_file_with_token", {
           p_repo_id: repoId,
           p_file_path: filePath,
@@ -186,16 +185,15 @@ export function useFileBuffer({ repoId, shareToken, onFileSaved }: UseFileBuffer
           ? "edit"
           : "add";
 
-      const { error } = await supabase.rpc("stage_file_change_with_token", {
-        p_repo_id: repoId,
-        p_token: shareToken || null,
-        p_operation_type: operationType,
-        p_file_path: filePath,
-        p_old_content: oldContentToUse,
-        p_new_content: file.content,
+      // Stage via edge function to emit server-side broadcast
+      await stageFile({
+        repoId,
+        shareToken,
+        filePath,
+        operationType,
+        oldContent: oldContentToUse,
+        newContent: file.content,
       });
-
-      if (error) throw error;
 
       // Update buffer: mark as clean, update lastSavedContent but PRESERVE originalContent
       setBuffer(prev => {

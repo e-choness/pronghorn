@@ -705,13 +705,15 @@ async function initializeKnownStagedFiles() {
 async function setupRealtimeSubscription() {
   console.log('[Pronghorn] ========== SETTING UP REALTIME SUBSCRIPTIONS ==========');
   console.log(\`[Pronghorn] Repo ID: \${CONFIG.repoId}\`);
-  console.log('[Pronghorn] Using BROADCAST pattern (not postgres_changes) to avoid RLS issues');
+  console.log('[Pronghorn] Using BROADCAST pattern on repo-staging and repo-files channels');
   
-  const channelName = \`local-runner-\${CONFIG.repoId}\`;
+  // Channel names MUST match what edge functions broadcast on
+  const stagingChannelName = \`repo-staging-\${CONFIG.repoId}\`;
+  const filesChannelName = \`repo-files-\${CONFIG.repoId}\`;
   
-  const channel = supabase
-    .channel(channelName)
-    // Listen for staging_refresh broadcasts (emitted by staging-operations, coding-agent-orchestrator, sync-repo-push)
+  // Subscribe to staging broadcasts
+  const stagingChannel = supabase
+    .channel(stagingChannelName)
     .on(
       'broadcast',
       { event: 'staging_refresh' },
@@ -727,7 +729,16 @@ async function setupRealtimeSubscription() {
         scheduleStagingSync();
       }
     )
-    // Listen for files_refresh broadcasts (emitted by sync-repo-push, sync-repo-pull)
+    .subscribe((status) => {
+      console.log(\`[Pronghorn] Staging channel (\${stagingChannelName}) status: \${status}\`);
+      if (status === 'SUBSCRIBED') {
+        console.log('[Pronghorn] ✓ Listening for staging_refresh broadcasts');
+      }
+    });
+  
+  // Subscribe to files broadcasts + postgres_changes fallback
+  const filesChannel = supabase
+    .channel(filesChannelName)
     .on(
       'broadcast',
       { event: 'files_refresh' },
@@ -740,11 +751,9 @@ async function setupRealtimeSubscription() {
           return;
         }
         
-        // Re-sync all files from database
         await syncAllFilesFromDatabase();
       }
     )
-    // Keep postgres_changes for repo_files as fallback (these work because we filter on repo_id in the query)
     .on(
       'postgres_changes',
       {
@@ -761,20 +770,13 @@ async function setupRealtimeSubscription() {
       }
     )
     .subscribe((status) => {
-      console.log(\`[Pronghorn] Realtime subscription status: \${status}\`);
+      console.log(\`[Pronghorn] Files channel (\${filesChannelName}) status: \${status}\`);
       if (status === 'SUBSCRIBED') {
-        console.log('[Pronghorn] ✓ Listening for changes...');
-        console.log(\`[Pronghorn] ✓ Channel: \${channelName}\`);
-        console.log('[Pronghorn] ✓ Broadcasts: staging_refresh, files_refresh');
-        console.log('[Pronghorn] ✓ Postgres Changes: repo_files (filtered)');
-      } else if (status === 'CHANNEL_ERROR') {
-        console.error('[Pronghorn] ✗ Channel error - check Supabase realtime configuration');
-      } else if (status === 'TIMED_OUT') {
-        console.error('[Pronghorn] ✗ Channel timed out');
+        console.log('[Pronghorn] ✓ Listening for files_refresh broadcasts + postgres_changes');
       }
     });
   
-  return channel;
+  return { stagingChannel, filesChannel };
 }
 
 async function syncAllFilesFromDatabase() {

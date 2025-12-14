@@ -138,10 +138,11 @@ serve(async (req) => {
     // Broadcast staging_refresh event after successful operation
     console.log(`[staging-operations] Broadcasting staging_refresh for repo: ${repoId}`);
     const channel = supabase.channel(`repo-staging-${repoId}`);
+    await channel.subscribe();
     await channel.send({
       type: "broadcast",
       event: "staging_refresh",
-      payload: { repoId, action, timestamp: Date.now() },
+      payload: { repoId, action, filePath: request.filePath, timestamp: Date.now() },
     });
     await supabase.removeChannel(channel);
 

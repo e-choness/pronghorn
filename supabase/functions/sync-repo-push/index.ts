@@ -469,6 +469,7 @@ Deno.serve(async (req) => {
     try {
       console.log(`Broadcasting staging_refresh and files_refresh for repo: ${repoId}`);
       const stagingChannel = supabaseClient.channel(`repo-staging-${repoId}`);
+      await stagingChannel.subscribe();
       await stagingChannel.send({
         type: "broadcast",
         event: "staging_refresh",
@@ -477,6 +478,7 @@ Deno.serve(async (req) => {
       await supabaseClient.removeChannel(stagingChannel);
 
       const filesChannel = supabaseClient.channel(`repo-files-${repoId}`);
+      await filesChannel.subscribe();
       await filesChannel.send({
         type: "broadcast",
         event: "files_refresh",
