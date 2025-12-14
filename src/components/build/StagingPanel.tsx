@@ -11,6 +11,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { useToast } from "@/hooks/use-toast";
 import { FileText, FilePlus, FileX, FilePenLine, Loader2, GitCommit, X, ArrowLeft, ChevronDown, Upload } from "lucide-react";
 import { CodeEditor } from "@/components/repository/CodeEditor";
+import { unstageFile, unstageMultiple, discardAllStaged, commitStaged } from "@/lib/stagingOperations";
 
 interface StagedChange {
   id: string;
@@ -174,14 +175,12 @@ export function StagingPanel({ projectId, shareToken, onViewDiff, autoCommit, on
     try {
       setCommitting(true);
 
-      const { data, error } = await supabase.rpc("commit_staged_with_token", {
-        p_repo_id: repoId,
-        p_token: shareToken || null,
-        p_commit_message: commitMessage,
-        p_branch: "main",
+      await commitStaged({
+        repoId,
+        shareToken,
+        commitMessage,
+        branch: "main",
       });
-
-      if (error) throw error;
 
       toast({
         title: "Success",
@@ -346,13 +345,11 @@ export function StagingPanel({ projectId, shareToken, onViewDiff, autoCommit, on
     if (!repoId) return;
 
     try {
-      const { error } = await supabase.rpc("unstage_file_with_token", {
-        p_repo_id: repoId,
-        p_file_path: filePath,
-        p_token: shareToken || null,
+      await unstageFile({
+        repoId,
+        shareToken,
+        filePath,
       });
-
-      if (error) throw error;
 
       toast({
         title: "Success",
@@ -373,13 +370,11 @@ export function StagingPanel({ projectId, shareToken, onViewDiff, autoCommit, on
     if (!repoId || selectedFiles.size === 0) return;
 
     try {
-      const { error } = await supabase.rpc("unstage_files_with_token", {
-        p_repo_id: repoId,
-        p_file_paths: Array.from(selectedFiles),
-        p_token: shareToken || null,
+      await unstageMultiple({
+        repoId,
+        shareToken,
+        filePaths: Array.from(selectedFiles),
       });
-
-      if (error) throw error;
 
       toast({
         title: "Success",
@@ -401,12 +396,10 @@ export function StagingPanel({ projectId, shareToken, onViewDiff, autoCommit, on
     if (!repoId) return;
 
     try {
-      const { error } = await supabase.rpc("discard_staged_with_token", {
-        p_repo_id: repoId,
-        p_token: shareToken || null,
+      await discardAllStaged({
+        repoId,
+        shareToken,
       });
-
-      if (error) throw error;
 
       toast({
         title: "Success",

@@ -1480,6 +1480,7 @@ Use them to understand context and inform your file operations.` : ''}`;
         try {
           // Broadcast staging_refresh for local runner
           const stagingChannel = supabase.channel(`repo-staging-${repoId}`);
+          await stagingChannel.subscribe();
           await stagingChannel.send({
             type: "broadcast",
             event: "staging_refresh",
@@ -1490,6 +1491,7 @@ Use them to understand context and inform your file operations.` : ''}`;
 
           // Broadcast repo_files_refresh for Build.tsx file tree
           const filesChannel = supabase.channel(`repo-changes-${projectId}`);
+          await filesChannel.subscribe();
           await filesChannel.send({
             type: "broadcast",
             event: "repo_files_refresh",

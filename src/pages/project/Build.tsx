@@ -19,6 +19,8 @@ import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Menu, FilePlus, FolderPlus, Eye, EyeOff, Upload, Trash2 } from "lucide-react";
 import { CreateFileDialog } from "@/components/repository/CreateFileDialog";
 import { RenameDialog } from "@/components/repository/RenameDialog";
+import { stageFile } from "@/lib/stagingOperations";
+
 const BINARY_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'svg', 'pdf', 'zip', 'tar', 'gz', 'exe', 'dll', 'so', 'dylib', 'woff', 'woff2', 'ttf', 'eot', 'mp3', 'mp4', 'wav', 'ogg', 'webm', 'avi', 'mov'];
 
 function isBinaryFile(filename: string): boolean {
@@ -380,21 +382,21 @@ export default function Build() {
 
       if (createType === "folder") {
         // Stage .gitkeep file in folder as add operation
-        await supabase.rpc("stage_file_change_with_token", {
-          p_repo_id: defaultRepo.id,
-          p_token: shareToken || null,
-          p_file_path: `${fullPath}/.gitkeep`,
-          p_operation_type: "add",
-          p_new_content: "",
+        await stageFile({
+          repoId: defaultRepo.id,
+          shareToken: shareToken || null,
+          filePath: `${fullPath}/.gitkeep`,
+          operationType: "add",
+          newContent: "",
         });
       } else {
         // Stage new file as add operation
-        await supabase.rpc("stage_file_change_with_token", {
-          p_repo_id: defaultRepo.id,
-          p_token: shareToken || null,
-          p_file_path: fullPath,
-          p_operation_type: "add",
-          p_new_content: "",
+        await stageFile({
+          repoId: defaultRepo.id,
+          shareToken: shareToken || null,
+          filePath: fullPath,
+          operationType: "add",
+          newContent: "",
         });
       }
 
@@ -460,17 +462,15 @@ export default function Build() {
       }
       
       // Stage the rename
-      const { error } = await supabase.rpc("stage_file_change_with_token", {
-        p_repo_id: defaultRepo.id,
-        p_token: shareToken || null,
-        p_operation_type: "rename",
-        p_file_path: newPath,
-        p_old_path: oldPath,
-        p_old_content: oldContent,
-        p_new_content: oldContent,
+      await stageFile({
+        repoId: defaultRepo.id,
+        shareToken: shareToken || null,
+        filePath: newPath,
+        operationType: "rename",
+        oldPath: oldPath,
+        oldContent: oldContent,
+        newContent: oldContent,
       });
-
-      if (error) throw error;
 
       toast.success(`Renamed to ${newPath.split('/').pop()}`);
       setRenameDialogOpen(false);
@@ -503,16 +503,14 @@ export default function Build() {
         }
       }
 
-      const { error } = await supabase.rpc("stage_file_change_with_token", {
-        p_repo_id: defaultRepo.id,
-        p_token: shareToken || null,
-        p_operation_type: "delete",
-        p_file_path: path,
-        p_old_content: oldContent,
-        p_new_content: null,
+      await stageFile({
+        repoId: defaultRepo.id,
+        shareToken: shareToken || null,
+        filePath: path,
+        operationType: "delete",
+        oldContent: oldContent,
+        newContent: null,
       });
-
-      if (error) throw error;
 
       toast.success(`Staged for deletion: ${path}`);
       if (currentPath === path) {
@@ -579,18 +577,15 @@ export default function Build() {
           });
         }
 
-        // Stage the file with binary flag
-        const { error } = await supabase.rpc("stage_file_change_with_token", {
-          p_repo_id: defaultRepo.id,
-          p_token: shareToken || null,
-          p_operation_type: "add",
-          p_file_path: fullPath,
-          p_old_content: null,
-          p_new_content: content,
-          p_is_binary: isBinary,
+        // Stage the file via edge function for broadcast
+        await stageFile({
+          repoId: defaultRepo.id,
+          shareToken: shareToken || null,
+          filePath: fullPath,
+          operationType: "add",
+          oldContent: null,
+          newContent: content,
         });
-
-        if (error) throw error;
 
         toast.success(`Uploaded and staged: ${fullPath.split('/').pop()}`);
       } catch (error: any) {
@@ -628,17 +623,15 @@ export default function Build() {
         }
       }
 
-      // Stage the file for deletion
-      const { error } = await supabase.rpc("stage_file_change_with_token", {
-        p_repo_id: defaultRepo.id,
-        p_token: shareToken || null,
-        p_operation_type: "delete",
-        p_file_path: currentFile.path,
-        p_old_content: oldContent,
-        p_new_content: null,
+      // Stage the file for deletion via edge function
+      await stageFile({
+        repoId: defaultRepo.id,
+        shareToken: shareToken || null,
+        filePath: currentFile.path,
+        operationType: "delete",
+        oldContent: oldContent,
+        newContent: null,
       });
-
-      if (error) throw error;
 
       toast.success(`Staged for deletion: ${currentFile.path}`);
       closeFile();
