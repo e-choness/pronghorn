@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
@@ -10,11 +10,6 @@ import {
   SelectTrigger, 
   SelectValue 
 } from '@/components/ui/select';
-import { 
-  Collapsible, 
-  CollapsibleContent, 
-  CollapsibleTrigger 
-} from '@/components/ui/collapsible';
 import { 
   Table, 
   TableBody, 
@@ -265,151 +260,160 @@ export function RawLLMLogsViewer({ projectId, shareToken }: RawLLMLogsViewerProp
               </TableRow>
             </TableHeader>
             <TableBody>
-              {logs.map((log) => (
-                <Collapsible key={log.id} open={expandedRows.has(log.id)}>
-                  <TableRow 
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => toggleRow(log.id)}
-                  >
-                    <TableCell>
-                      <CollapsibleTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-6 w-6">
-                          {expandedRows.has(log.id) 
+              {logs.map((log) => {
+                const isExpanded = expandedRows.has(log.id);
+                return (
+                  <Fragment key={log.id}>
+                    <TableRow 
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => toggleRow(log.id)}
+                    >
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleRow(log.id);
+                          }}
+                        >
+                          {isExpanded 
                             ? <ChevronDown className="h-4 w-4" />
                             : <ChevronRight className="h-4 w-4" />
                           }
                         </Button>
-                      </CollapsibleTrigger>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{log.iteration}</Badge>
-                    </TableCell>
-                    <TableCell className="text-xs font-mono truncate max-w-[120px]">
-                      {log.model}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {formatCharCount(log.input_char_count)}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {formatCharCount(log.output_char_count)}
-                    </TableCell>
-                    <TableCell>
-                      {getStatusIcon(log.was_parse_success)}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {log.api_response_status || '-'}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {new Date(log.created_at).toLocaleTimeString()}
-                    </TableCell>
-                  </TableRow>
-                  
-                  {expandedRows.has(log.id) && (
-                    <tr className="bg-muted/30">
-                      <td colSpan={8} className="p-4">
-                        <div className="space-y-4">
-                          {/* Parse Error Message */}
-                          {!log.was_parse_success && log.parse_error_message && (
-                            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
-                              <p className="text-sm font-medium text-destructive">Parse Error:</p>
-                              <p className="text-xs text-destructive/80 font-mono">
-                                {log.parse_error_message}
-                              </p>
-                            </div>
-                          )}
-                          
-                          {/* Input Section */}
-                          <div className="border rounded-md">
-                            <div 
-                              className="flex items-center justify-between p-2 bg-muted/50 cursor-pointer"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleSection(log.id, 'input');
-                              }}
-                            >
-                              <div className="flex items-center gap-2">
-                                {isInputExpanded(log.id) 
-                                  ? <ChevronDown className="h-4 w-4" />
-                                  : <ChevronRight className="h-4 w-4" />
-                                }
-                                <span className="text-sm font-medium">Input Prompt</span>
-                                <Badge variant="secondary" className="text-xs">
-                                  {formatCharCount(log.input_char_count)} chars
-                                </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{log.iteration}</Badge>
+                      </TableCell>
+                      <TableCell className="text-xs font-mono truncate max-w-[120px]">
+                        {log.model}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {formatCharCount(log.input_char_count)}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {formatCharCount(log.output_char_count)}
+                      </TableCell>
+                      <TableCell>
+                        {getStatusIcon(log.was_parse_success)}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {log.api_response_status || '-'}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {new Date(log.created_at).toLocaleTimeString()}
+                      </TableCell>
+                    </TableRow>
+
+                    {isExpanded && (
+                      <TableRow className="bg-muted/30">
+                        <TableCell colSpan={8} className="p-4">
+                          <div className="space-y-4">
+                            {/* Parse Error Message */}
+                            {!log.was_parse_success && log.parse_error_message && (
+                              <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                                <p className="text-sm font-medium text-destructive">Parse Error:</p>
+                                <p className="text-xs text-destructive/80 font-mono">
+                                  {log.parse_error_message}
+                                </p>
                               </div>
-                              <Button
-                                variant="ghost"
-                                size="sm"
+                            )}
+
+                            {/* Input Section */}
+                            <div className="border rounded-md">
+                              <div 
+                                className="flex items-center justify-between p-2 bg-muted/50 cursor-pointer"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  copyToClipboard(log.input_prompt, 'Input prompt');
+                                  toggleSection(log.id, 'input');
                                 }}
                               >
-                                <Copy className="h-3 w-3 mr-1" />
-                                Copy
-                              </Button>
-                            </div>
-                            {isInputExpanded(log.id) && (
-                              <ScrollArea className="h-[300px] p-3">
-                                <pre className="text-xs font-mono whitespace-pre-wrap break-all">
-                                  {log.input_prompt}
-                                </pre>
-                              </ScrollArea>
-                            )}
-                          </div>
-                          
-                          {/* Output Section */}
-                          <div className="border rounded-md">
-                            <div 
-                              className="flex items-center justify-between p-2 bg-muted/50 cursor-pointer"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleSection(log.id, 'output');
-                              }}
-                            >
-                              <div className="flex items-center gap-2">
-                                {isOutputExpanded(log.id) 
-                                  ? <ChevronDown className="h-4 w-4" />
-                                  : <ChevronRight className="h-4 w-4" />
-                                }
-                                <span className="text-sm font-medium">Raw Output</span>
-                                <Badge variant="secondary" className="text-xs">
-                                  {formatCharCount(log.output_char_count)} chars
-                                </Badge>
-                                {!log.was_parse_success && (
-                                  <Badge variant="destructive" className="text-xs">
-                                    Parse Failed
+                                <div className="flex items-center gap-2">
+                                  {isInputExpanded(log.id) 
+                                    ? <ChevronDown className="h-4 w-4" />
+                                    : <ChevronRight className="h-4 w-4" />
+                                  }
+                                  <span className="text-sm font-medium">Input Prompt</span>
+                                  <Badge variant="secondary" className="text-xs">
+                                    {formatCharCount(log.input_char_count)} chars
                                   </Badge>
-                                )}
-                              </div>
-                              {log.output_raw && (
+                                </div>
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    copyToClipboard(log.output_raw!, 'Raw output');
+                                    copyToClipboard(log.input_prompt, 'Input prompt');
                                   }}
                                 >
                                   <Copy className="h-3 w-3 mr-1" />
                                   Copy
                                 </Button>
+                              </div>
+                              {isInputExpanded(log.id) && (
+                                <ScrollArea className="h-[300px] p-3">
+                                  <pre className="text-xs font-mono whitespace-pre-wrap break-all">
+                                    {log.input_prompt}
+                                  </pre>
+                                </ScrollArea>
                               )}
                             </div>
-                            {isOutputExpanded(log.id) && (
-                              <ScrollArea className="h-[300px] p-3">
-                                <pre className="text-xs font-mono whitespace-pre-wrap break-all">
-                                  {log.output_raw || '(No output captured)'}
-                                </pre>
-                              </ScrollArea>
-                            )}
+
+                            {/* Output Section */}
+                            <div className="border rounded-md">
+                              <div 
+                                className="flex items-center justify-between p-2 bg-muted/50 cursor-pointer"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleSection(log.id, 'output');
+                                }}
+                              >
+                                <div className="flex items-center gap-2">
+                                  {isOutputExpanded(log.id) 
+                                    ? <ChevronDown className="h-4 w-4" />
+                                    : <ChevronRight className="h-4 w-4" />
+                                  }
+                                  <span className="text-sm font-medium">Raw Output</span>
+                                  <Badge variant="secondary" className="text-xs">
+                                    {formatCharCount(log.output_char_count)} chars
+                                  </Badge>
+                                  {!log.was_parse_success && (
+                                    <Badge variant="destructive" className="text-xs">
+                                      Parse Failed
+                                    </Badge>
+                                  )}
+                                </div>
+                                {log.output_raw && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      copyToClipboard(log.output_raw!, 'Raw output');
+                                    }}
+                                  >
+                                    <Copy className="h-3 w-3 mr-1" />
+                                    Copy
+                                  </Button>
+                                )}
+                              </div>
+                              {isOutputExpanded(log.id) && (
+                                <ScrollArea className="h-[300px] p-3">
+                                  <pre className="text-xs font-mono whitespace-pre-wrap break-all">
+                                    {log.output_raw || '(No output captured)'}
+                                  </pre>
+                                </ScrollArea>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </Collapsible>
-              ))}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
+                );
+              })}
             </TableBody>
           </Table>
         </ScrollArea>
