@@ -652,6 +652,30 @@ export default function Specifications() {
     }
   };
 
+  // Handle saving specification as artifact
+  const handleSaveAsArtifact = async (spec: SavedSpecification) => {
+    if (!projectId) return;
+    
+    toast.loading("Saving as artifact...", { id: "save-artifact" });
+    
+    try {
+      const { error } = await supabase.rpc("insert_artifact_with_token", {
+        p_project_id: projectId,
+        p_token: shareToken || null,
+        p_content: spec.generated_spec,
+        p_source_type: "specification",
+        p_source_id: spec.id,
+        p_image_url: null,
+      });
+      
+      if (error) throw error;
+      toast.success(`${spec.agent_title} (v${spec.version}) saved as artifact`, { id: "save-artifact" });
+    } catch (error) {
+      console.error("Error saving artifact:", error);
+      toast.error("Failed to save as artifact", { id: "save-artifact" });
+    }
+  };
+
   // Handle setting a version as latest
   const handleSetAsLatest = async (specId: string) => {
     try {
@@ -1252,6 +1276,7 @@ export default function Specifications() {
                 selectedVersions={selectedVersions}
                 onView={handleViewSavedSpec}
                 onDownload={handleDownloadSavedSpec}
+                onSaveAsArtifact={handleSaveAsArtifact}
                 onDelete={handleDeleteSavedSpec}
                 onSetAsLatest={handleSetAsLatest}
                 onReturnToLatest={handleReturnToLatest}

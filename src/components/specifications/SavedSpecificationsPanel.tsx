@@ -10,6 +10,7 @@ import {
   Eye,
   RotateCcw,
   AlertTriangle,
+  Archive,
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -43,6 +44,7 @@ interface SavedSpecificationsPanelProps {
   selectedVersions: Record<string, SavedSpecification>;
   onView: (spec: SavedSpecification) => void;
   onDownload: (spec: SavedSpecification) => void;
+  onSaveAsArtifact: (spec: SavedSpecification) => void;
   onDelete: (specId: string) => void;
   onSetAsLatest: (specId: string) => void;
   onReturnToLatest: (agentId: string) => void;
@@ -56,6 +58,7 @@ export function SavedSpecificationsPanel({
   selectedVersions,
   onView,
   onDownload,
+  onSaveAsArtifact,
   onDelete,
   onSetAsLatest,
   onReturnToLatest,
@@ -184,6 +187,15 @@ export function SavedSpecificationsPanel({
                           title="Download"
                         >
                           <Download className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => onSaveAsArtifact(displayedSpec)}
+                          title="Save as Artifact"
+                        >
+                          <Archive className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="ghost"
