@@ -251,6 +251,7 @@ export function generateFullImportSQL(
 
 /**
  * Generate table definition from inferred column types
+ * Handles duplicate column names by appending suffixes
  */
 export function generateTableDefinitionFromInference(
   tableName: string,
@@ -260,6 +261,7 @@ export function generateTableDefinitionFromInference(
 ): TableDefinition {
   const columns: ColumnDefinition[] = [];
   const indexes: IndexDefinition[] = [];
+  const usedNames = new Set<string>();
 
   // Add auto-generated ID if requested
   if (addIdColumn) {
@@ -271,6 +273,7 @@ export function generateTableDefinitionFromInference(
       isUnique: true,
       defaultValue: 'gen_random_uuid()'
     });
+    usedNames.add('id');
   }
 
   // Add inferred columns
@@ -278,8 +281,26 @@ export function generateTableDefinitionFromInference(
     // Skip internal columns
     if (info.name.startsWith('_')) return;
 
+    // Handle duplicate column names
+    let finalName = info.name;
+    
+    // If auto-ID is enabled and column is named 'id', rename it
+    if (addIdColumn && finalName.toLowerCase() === 'id') {
+      finalName = 'original_id';
+    }
+    
+    // Ensure no duplicate column names
+    if (usedNames.has(finalName.toLowerCase())) {
+      let suffix = 2;
+      while (usedNames.has(`${finalName}_${suffix}`.toLowerCase())) {
+        suffix++;
+      }
+      finalName = `${finalName}_${suffix}`;
+    }
+    usedNames.add(finalName.toLowerCase());
+
     columns.push({
-      name: info.name,
+      name: finalName,
       type: info.inferredType,
       nullable: info.nullable,
       isPrimaryKey: !addIdColumn && info.suggestPrimaryKey,
@@ -289,8 +310,8 @@ export function generateTableDefinitionFromInference(
     // Add index if suggested
     if (info.suggestIndex) {
       indexes.push({
-        name: `idx_${tableName}_${info.name}`,
-        columns: [info.name],
+        name: `idx_${tableName}_${finalName}`,
+        columns: [finalName],
         unique: false
       });
     }

@@ -1,10 +1,11 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ChevronLeft, ChevronRight, Upload, Sparkles, Database, FileSpreadsheet, FileJson, Check, Plus, ArrowRight, Loader2 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { ChevronLeft, ChevronRight, Upload, Sparkles, Database, FileSpreadsheet, FileJson, Check, Plus, ArrowRight, Loader2, HelpCircle, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ExcelData } from '@/utils/parseExcel';
 import { ParsedJsonData, getJsonHeaders, getJsonRowsAsArray } from '@/utils/parseJson';
@@ -637,22 +638,46 @@ export default function DatabaseImportWizard({
         </div>
 
         {/* AI Mode Toggle */}
-        <div className="flex items-center justify-between px-2 py-2 bg-muted/30 rounded-lg">
-          <div className="flex items-center gap-2">
-            <Sparkles className={cn("h-4 w-4", aiMode ? "text-amber-500" : "text-muted-foreground")} />
-            <Label htmlFor="ai-mode" className="text-sm font-medium">AI-Assisted Mode</Label>
-            {aiLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-          </div>
-          <div className="flex items-center gap-2">
-            {aiMode && currentStep === 'schema' && !aiLoading && (
-              <Button variant="outline" size="sm" onClick={callAiAgent}>
-                <Sparkles className="h-3 w-3 mr-1" />
-                Analyze
-              </Button>
+        <TooltipProvider>
+          <div className="flex flex-col gap-2 px-2 py-3 bg-muted/30 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className={cn("h-4 w-4", aiMode ? "text-amber-500" : "text-muted-foreground")} />
+                <Label htmlFor="ai-mode" className="text-sm font-medium">AI-Assisted Mode</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs">
+                    <p className="text-sm">
+                      <strong>Manual Mode:</strong> Rule-based type inference. You control all schema decisions.
+                    </p>
+                    <p className="text-sm mt-1">
+                      <strong>AI Mode:</strong> An LLM analyzes your data and proposes optimal table schemas and field mappings.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+                {aiLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+              </div>
+              <div className="flex items-center gap-2">
+                {aiMode && currentStep === 'schema' && !aiLoading && (
+                  <Button variant="outline" size="sm" onClick={callAiAgent}>
+                    <Sparkles className="h-3 w-3 mr-1" />
+                    Analyze
+                  </Button>
+                )}
+                <Switch id="ai-mode" checked={aiMode} onCheckedChange={setAiMode} />
+              </div>
+            </div>
+            {/* Description when AI mode is enabled */}
+            {aiMode && (
+              <p className="text-xs text-muted-foreground pl-6">
+                AI will analyze your data structure and suggest optimal column types, table names, and field mappings. 
+                Click "Analyze" in the Schema step to get AI recommendations.
+              </p>
             )}
-            <Switch id="ai-mode" checked={aiMode} onCheckedChange={setAiMode} />
           </div>
-        </div>
+        </TooltipProvider>
 
         {/* AI Explanation */}
         {aiExplanation && (
