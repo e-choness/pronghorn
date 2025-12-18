@@ -19,7 +19,7 @@ import {
   ColumnDefinition,
   IndexDefinition
 } from '@/utils/sqlGenerator';
-import { Key, Hash, Fingerprint, AlertCircle, Sparkles } from 'lucide-react';
+import { Key, Hash, Fingerprint, AlertCircle, Sparkles, AlertTriangle } from 'lucide-react';
 
 const POSTGRES_TYPES: PostgresType[] = [
   'TEXT',
@@ -52,6 +52,7 @@ interface ColumnConfig {
   isUnique: boolean;
   hasIndex: boolean;
   inferredInfo: ColumnTypeInfo;
+  wasRenamed?: boolean; // Track if column was auto-renamed to avoid conflict
 }
 
 export default function SchemaCreator({
@@ -66,21 +67,37 @@ export default function SchemaCreator({
   const [addAutoId, setAddAutoId] = useState(true);
   const [columns, setColumns] = useState<ColumnConfig[]>([]);
 
+  // Check if source data has an "id" column (case-insensitive)
+  const sourceHasIdColumn = useMemo(() => {
+    return headers.some(h => h?.toLowerCase() === 'id');
+  }, [headers]);
+
   // Infer column types from sample data
   useEffect(() => {
     const inferred = headers.map((header, idx) => {
       const values = sampleData.slice(0, sampleSize).map(row => row[idx]);
       const info = inferColumnType(values, header, sampleSize);
       
+      // Sanitize column name
+      let sanitizedName = sanitizeColumnName(header);
+      let wasRenamed = false;
+      
+      // Check for duplicate "id" conflict when auto-ID is enabled
+      if (addAutoId && sanitizedName.toLowerCase() === 'id') {
+        sanitizedName = 'original_id';
+        wasRenamed = true;
+      }
+      
       return {
-        name: sanitizeColumnName(header),
+        name: sanitizedName,
         originalName: header,
         type: info.inferredType,
         nullable: info.nullable,
         isPrimaryKey: !addAutoId && info.suggestPrimaryKey,
         isUnique: info.uniqueRatio > 0.99 && !info.suggestPrimaryKey,
         hasIndex: info.suggestIndex,
-        inferredInfo: info
+        inferredInfo: info,
+        wasRenamed
       };
     });
 
@@ -91,6 +108,7 @@ export default function SchemaCreator({
   useEffect(() => {
     const columnDefs: ColumnDefinition[] = [];
     const indexes: IndexDefinition[] = [];
+    const usedNames = new Set<string>();
 
     // Add auto-generated UUID if enabled
     if (addAutoId) {
@@ -102,12 +120,26 @@ export default function SchemaCreator({
         isUnique: true,
         defaultValue: 'gen_random_uuid()'
       });
+      usedNames.add('id');
     }
 
-    // Add user columns
+    // Add user columns, checking for duplicates
     columns.forEach(col => {
+      let finalName = col.name;
+      
+      // Ensure no duplicate column names
+      if (usedNames.has(finalName.toLowerCase())) {
+        // Append suffix to make unique
+        let suffix = 2;
+        while (usedNames.has(`${finalName}_${suffix}`.toLowerCase())) {
+          suffix++;
+        }
+        finalName = `${finalName}_${suffix}`;
+      }
+      usedNames.add(finalName.toLowerCase());
+      
       columnDefs.push({
-        name: col.name,
+        name: finalName,
         type: col.type,
         nullable: col.nullable,
         isPrimaryKey: !addAutoId && col.isPrimaryKey,
@@ -116,8 +148,8 @@ export default function SchemaCreator({
 
       if (col.hasIndex && !col.isPrimaryKey && !col.isUnique) {
         indexes.push({
-          name: `idx_${sanitizeTableName(tableName)}_${col.name}`,
-          columns: [col.name],
+          name: `idx_${sanitizeTableName(tableName)}_${finalName}`,
+          columns: [finalName],
           unique: false
         });
       }
@@ -139,6 +171,9 @@ export default function SchemaCreator({
 
   const sanitizedTableName = sanitizeTableName(tableName);
   const hasValidName = sanitizedTableName.length > 0;
+
+  // Count renamed columns
+  const renamedColumnsCount = columns.filter(c => c.wasRenamed).length;
 
   return (
     <div className="flex flex-col h-full gap-4">
@@ -179,6 +214,17 @@ export default function SchemaCreator({
           </Label>
         </div>
       </div>
+
+      {/* Warning if source has 'id' column and auto-ID is enabled */}
+      {addAutoId && sourceHasIdColumn && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+          <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+          <p className="text-sm text-muted-foreground">
+            Your data has an "id" column which conflicts with the auto-generated primary key. 
+            It has been renamed to "original_id" to avoid duplication.
+          </p>
+        </div>
+      )}
 
       {/* Column Configuration */}
       <div className="flex-1 border rounded-lg overflow-hidden min-h-0">
@@ -231,17 +277,22 @@ export default function SchemaCreator({
                 </tr>
               )}
               {columns.map((col, idx) => (
-                <tr key={idx} className="hover:bg-muted/30">
+                <tr key={idx} className={cn("hover:bg-muted/30", col.wasRenamed && "bg-amber-500/5")}>
                   <td className="px-3 py-2 border-b">
                     <Input
                       value={col.name}
-                      onChange={(e) => updateColumn(idx, { name: sanitizeColumnName(e.target.value) })}
+                      onChange={(e) => updateColumn(idx, { name: sanitizeColumnName(e.target.value), wasRenamed: false })}
                       className="h-8 font-mono text-xs"
                     />
-                    {col.name !== col.originalName && (
-                      <span className="text-xs text-muted-foreground">
-                        from: {col.originalName}
-                      </span>
+                    {(col.name !== col.originalName || col.wasRenamed) && (
+                      <div className="flex items-center gap-1 mt-1">
+                        <span className="text-xs text-muted-foreground">
+                          from: {col.originalName}
+                        </span>
+                        {col.wasRenamed && (
+                          <Badge variant="outline" className="text-xs text-amber-600">renamed</Badge>
+                        )}
+                      </div>
                     )}
                   </td>
                   <td className="px-3 py-2 border-b">
@@ -323,6 +374,9 @@ export default function SchemaCreator({
       <div className="text-sm text-muted-foreground">
         {columns.length} columns • {addAutoId ? 1 : columns.filter(c => c.isPrimaryKey).length} primary key • 
         {columns.filter(c => c.hasIndex).length} indexes
+        {renamedColumnsCount > 0 && (
+          <span className="text-amber-600"> • {renamedColumnsCount} column(s) renamed</span>
+        )}
       </div>
     </div>
   );

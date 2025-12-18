@@ -56,11 +56,18 @@ export default function FileUploader({
         }
         onFileUploaded('excel', data);
         toast.success(`Loaded ${data.sheets.length} sheet(s) from Excel`);
+        // Show warnings if any (e.g., AutoFilter parsing issues)
+        if (data.warnings && data.warnings.length > 0) {
+          data.warnings.forEach(w => toast.warning(w, { duration: 6000 }));
+        }
       } else if (extension === 'csv') {
         // CSV is handled as Excel with single sheet
         const data = await parseExcelFile(file);
         onFileUploaded('csv', data);
         toast.success(`Loaded CSV file with ${data.sheets[0]?.rows.length || 0} rows`);
+        if (data.warnings && data.warnings.length > 0) {
+          data.warnings.forEach(w => toast.warning(w, { duration: 6000 }));
+        }
       } else {
         throw new Error('Unsupported file format');
       }

@@ -10,12 +10,22 @@ export interface SheetData {
 export interface ExcelData {
   fileName: string;
   sheets: SheetData[];
+  warnings?: string[];
 }
 
 export async function parseExcelFile(file: File): Promise<ExcelData> {
   const workbook = new ExcelJS.Workbook();
   const arrayBuffer = await file.arrayBuffer();
-  await workbook.xlsx.load(arrayBuffer);
+  
+  const warnings: string[] = [];
+  
+  try {
+    await workbook.xlsx.load(arrayBuffer);
+  } catch (loadError: any) {
+    // If main load fails, try with a simpler approach
+    console.error('ExcelJS load error:', loadError);
+    throw new Error(`Failed to parse Excel file: ${loadError.message}`);
+  }
 
   const sheets: SheetData[] = [];
 
@@ -24,33 +34,68 @@ export async function parseExcelFile(file: File): Promise<ExcelData> {
     let headers: string[] = [];
     let headerRowIndex = 0;
 
-    worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-      const rowData: string[] = [];
-      row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-        let value = '';
-        if (cell.value !== null && cell.value !== undefined) {
-          if (typeof cell.value === 'object') {
-            if ('richText' in cell.value) {
-              value = cell.value.richText.map((rt: any) => rt.text).join('');
-            } else if ('text' in cell.value) {
-              value = String(cell.value.text);
-            } else if ('result' in cell.value) {
-              value = String(cell.value.result);
-            } else {
-              value = String(cell.value);
+    try {
+      worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+        const rowData: string[] = [];
+        
+        try {
+          row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+            let value = '';
+            try {
+              if (cell.value !== null && cell.value !== undefined) {
+                if (typeof cell.value === 'object') {
+                  if ('richText' in cell.value) {
+                    value = cell.value.richText.map((rt: any) => rt.text).join('');
+                  } else if ('text' in cell.value) {
+                    value = String(cell.value.text);
+                  } else if ('result' in cell.value) {
+                    value = String(cell.value.result);
+                  } else if ('error' in cell.value) {
+                    // Handle error values in cells
+                    value = '#ERROR';
+                  } else {
+                    // Handle other object types safely
+                    try {
+                      value = String(cell.value);
+                    } catch {
+                      value = '';
+                    }
+                  }
+                } else {
+                  value = String(cell.value);
+                }
+              }
+            } catch (cellError) {
+              // Skip problematic cells (like those with AutoFilter data)
+              console.warn(`Cell parsing error at row ${rowNumber}, col ${colNumber}:`, cellError);
+              value = '';
             }
+            
+            // Pad with empty strings if there are gaps
+            while (rowData.length < colNumber - 1) {
+              rowData.push('');
+            }
+            rowData.push(value);
+          });
+        } catch (rowCellError: any) {
+          // Handle row-level cell iteration errors (often caused by AutoFilter/filters)
+          if (rowCellError.message?.includes('filterButton') || 
+              rowCellError.message?.includes('Cannot set properties of undefined')) {
+            warnings.push(`Row ${rowNumber}: Some cell formatting was skipped due to Excel filter features`);
           } else {
-            value = String(cell.value);
+            console.warn(`Row ${rowNumber} cell iteration error:`, rowCellError);
           }
         }
-        // Pad with empty strings if there are gaps
-        while (rowData.length < colNumber - 1) {
-          rowData.push('');
+        
+        if (rowData.length > 0) {
+          rows.push(rowData);
         }
-        rowData.push(value);
       });
-      rows.push(rowData);
-    });
+    } catch (sheetError: any) {
+      // Handle sheet-level errors gracefully
+      console.error(`Sheet "${worksheet.name}" parsing error:`, sheetError);
+      warnings.push(`Sheet "${worksheet.name}": Some data may be incomplete due to parsing issues`);
+    }
 
     // Auto-detect header row (first row with multiple non-empty cells)
     for (let i = 0; i < rows.length; i++) {
@@ -72,9 +117,15 @@ export async function parseExcelFile(file: File): Promise<ExcelData> {
     }
   });
 
+  // If no sheets were parsed successfully, throw an error
+  if (sheets.length === 0) {
+    throw new Error('No data could be extracted from the Excel file. The file may be corrupted or in an unsupported format.');
+  }
+
   return {
     fileName: file.name,
     sheets,
+    warnings: warnings.length > 0 ? warnings : undefined
   };
 }
 
