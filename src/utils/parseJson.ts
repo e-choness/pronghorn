@@ -514,8 +514,9 @@ function processObject(
   
   // First pass: separate scalar values from nested structures
   for (const [key, value] of Object.entries(data)) {
-    // Skip _id and id fields - we handle them separately via _row_id
-    if (key === '_id' || key === 'id') continue;
+    // Skip _id, id, and __v fields - we handle _id/id separately via _row_id
+    // __v is MongoDB's version key which we don't need
+    if (key === '_id' || key === 'id' || key === '__v') continue;
     
     const sanitizedKey = sanitizeColumnName(key);
     const fullPath = currentPath ? `${currentPath}.${key}` : key;
