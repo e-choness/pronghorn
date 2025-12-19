@@ -107,7 +107,7 @@ export default function SchemaCreator({
         type: info.inferredType,
         nullable: info.nullable,
         isPrimaryKey: false, // Don't auto-set PK, let user decide
-        isUnique: info.uniqueRatio > 0.99 && !info.suggestPrimaryKey,
+        isUnique: false, // Don't auto-detect uniqueness - let user enable manually
         hasIndex: info.suggestIndex,
         inferredInfo: info,
         wasRenamed

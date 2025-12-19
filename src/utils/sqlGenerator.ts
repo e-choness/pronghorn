@@ -502,11 +502,38 @@ export function generateMultiTableImportSQL(
     }
   }
 
-  // Generate INSERT statements for each table (in order)
+  // First pass: Initialize ID mappings for all tables (parent-to-child order)
   for (const table of sortedTables) {
-    // Initialize ID mapping for this table
     const tableIdMap = new Map<string, string>();
     idMappingByTable.set(table.name, tableIdMap);
+    
+    // Get selected rows for this table
+    let selectedRows = table.rows;
+    if (selectedRowsByTable) {
+      const selection = selectedRowsByTable.get(table.name);
+      if (selection && selection.size > 0) {
+        selectedRows = table.rows.filter((_, idx) => selection.has(idx));
+      }
+    }
+    
+    // Generate ID mappings for all rows in this table
+    for (const row of selectedRows) {
+      const originalId = row['_row_id'];
+      let actualId: string;
+      if (isMongoObjectId(originalId)) {
+        actualId = generateUUID();
+      } else if (isValidUUID(originalId)) {
+        actualId = originalId;
+      } else {
+        actualId = generateUUID();
+      }
+      tableIdMap.set(originalId, actualId);
+    }
+  }
+
+  // Second pass: Generate INSERT statements with validated parent-child relationships
+  for (const table of sortedTables) {
+    const tableIdMap = idMappingByTable.get(table.name)!;
     
     // Get selected rows for this table
     let selectedRows = table.rows;
@@ -522,50 +549,52 @@ export function generateMultiTableImportSQL(
     // Get parent table name for resolving _parent_id
     const parentTableName = parentMap.get(table.name);
     const parentIdMap = parentTableName ? idMappingByTable.get(parentTableName) : undefined;
+    
+    // Build a set of valid parent IDs for FK validation
+    const validParentIds = parentIdMap ? new Set(parentIdMap.values()) : null;
 
     // Get columns: include 'id' explicitly using _row_id value, exclude _row_id from column list
     const columnNames = ['id', ...table.columns
       .filter(c => c.name !== '_row_id')
       .map(c => c.name)];
 
-    // Map rows to values, using _row_id for the 'id' column
-    const dataRows = selectedRows.map(row => {
+    // Map rows to values, filtering out rows with invalid parent references
+    const dataRows: any[][] = [];
+    for (const row of selectedRows) {
       const originalId = row['_row_id'];
+      const actualId = tableIdMap.get(originalId);
+      if (!actualId) continue; // Skip if no ID mapping (shouldn't happen)
       
-      // Determine the actual ID to use for this row
-      let actualId: string;
-      if (isMongoObjectId(originalId)) {
-        // MongoDB ObjectId - generate a new UUID
-        actualId = generateUUID();
-      } else if (isValidUUID(originalId)) {
-        // Already a valid UUID
-        actualId = originalId;
-      } else {
-        // Some other format - generate UUID
-        actualId = generateUUID();
+      // Validate _parent_id if this table has a parent
+      if (parentIdMap) {
+        const originalParentId = row['_parent_id'];
+        const resolvedParentId = parentIdMap.get(originalParentId);
+        
+        // Skip rows with missing parent references to avoid FK constraint violations
+        if (!resolvedParentId) {
+          console.warn(`Skipping row in ${table.name} - parent ID ${originalParentId} not found in ${parentTableName}`);
+          continue;
+        }
       }
-      
-      // Store mapping for child tables
-      tableIdMap.set(originalId, actualId);
       
       // Build the row data
       const rowData = [
-        actualId, // Use the actual ID (converted if needed)
+        actualId,
         ...table.columns
           .filter(c => c.name !== '_row_id')
           .map(c => {
-            // Handle _parent_id - resolve to actual parent ID
             if (c.name === '_parent_id' && parentIdMap) {
               const originalParentId = row[c.name];
-              const resolvedParentId = parentIdMap.get(originalParentId);
-              return resolvedParentId || originalParentId; // Fallback to original if not found
+              return parentIdMap.get(originalParentId) || null;
             }
             return row[c.name] ?? null;
           })
       ];
       
-      return rowData;
-    });
+      dataRows.push(rowData);
+    }
+    
+    if (dataRows.length === 0) continue;
 
     const batchSize = calculateBatchSize(columnNames.length, dataRows.length);
     const insertStmts = generateInsertBatchSQL(table.name, schema, columnNames, dataRows, batchSize);
@@ -633,7 +662,7 @@ export function generateTableDefinitionFromInference(
       type: info.inferredType,
       nullable: info.nullable,
       isPrimaryKey: false,
-      isUnique: false
+      isUnique: false  // Never auto-set unique constraints
     });
   }
 
@@ -754,7 +783,40 @@ export function generateSmartImportSQL(
   // Map<tableName, Map<originalId, actualIdUsed>>
   const idMappingByTable = new Map<string, Map<string, string>>();
 
-  // Process each table based on its match status
+  // First pass: Initialize ID mappings for all tables (parent-to-child order)
+  for (const table of sortedTables) {
+    const match = tableMatches.find(m => m.importTable === table.name);
+    const status = match?.status || 'new';
+    if (status === 'skip') continue;
+
+    const tableIdMap = new Map<string, string>();
+    idMappingByTable.set(table.name, tableIdMap);
+    
+    // Get selected rows for this table
+    let selectedRows = table.rows;
+    if (selectedRowsByTable) {
+      const selection = selectedRowsByTable.get(table.name);
+      if (selection && selection.size > 0) {
+        selectedRows = table.rows.filter((_, idx) => selection.has(idx));
+      }
+    }
+    
+    // Generate ID mappings for all rows in this table
+    for (const row of selectedRows) {
+      const originalId = row['_row_id'];
+      let actualId: string;
+      if (isMongoObjectId(originalId)) {
+        actualId = generateUUID();
+      } else if (isValidUUID(originalId)) {
+        actualId = originalId;
+      } else {
+        actualId = generateUUID();
+      }
+      tableIdMap.set(originalId, actualId);
+    }
+  }
+
+  // Second pass: Process each table based on its match status
   for (const table of sortedTables) {
     const match = tableMatches.find(m => m.importTable === table.name);
     const status = match?.status || 'new';
@@ -778,9 +840,8 @@ export function generateSmartImportSQL(
 
     if (selectedRows.length === 0) continue;
 
-    // Initialize ID mapping for this table
-    const tableIdMap = new Map<string, string>();
-    idMappingByTable.set(table.name, tableIdMap);
+    // Get ID mapping for this table
+    const tableIdMap = idMappingByTable.get(table.name)!;
 
     // Get parent table's ID mapping for resolving _parent_id
     const parentTableName = parentMap.get(table.name);
@@ -870,42 +931,42 @@ export function generateSmartImportSQL(
         statements.push(createStmt);
       }
 
-      // Generate INSERTs for new table
+      // Generate INSERTs for new table with parent validation
       const columnNames = ['id', ...table.columns
         .filter(c => c.name !== '_row_id')
         .map(c => c.name)];
 
-      const dataRows = selectedRows.map(row => {
+      const dataRows: any[][] = [];
+      for (const row of selectedRows) {
         const originalId = row['_row_id'];
+        const actualId = tableIdMap.get(originalId);
+        if (!actualId) continue;
         
-        // Determine the actual ID to use for this row
-        let actualId: string;
-        if (isMongoObjectId(originalId)) {
-          actualId = generateUUID();
-        } else if (isValidUUID(originalId)) {
-          actualId = originalId;
-        } else {
-          actualId = generateUUID();
+        // Validate _parent_id if this table has a parent
+        if (parentIdMap) {
+          const originalParentId = row['_parent_id'];
+          const resolvedParentId = parentIdMap.get(originalParentId);
+          if (!resolvedParentId) {
+            console.warn(`Skipping row in ${table.name} - parent ID ${originalParentId} not found in ${parentTableName}`);
+            continue;
+          }
         }
         
-        // Store mapping for child tables
-        tableIdMap.set(originalId, actualId);
-        
-        return [
+        dataRows.push([
           actualId,
           ...table.columns
             .filter(c => c.name !== '_row_id')
             .map(c => {
-              // Handle _parent_id - resolve to actual parent ID
               if (c.name === '_parent_id' && parentIdMap) {
                 const originalParentId = row[c.name];
-                const resolvedParentId = parentIdMap.get(originalParentId);
-                return resolvedParentId || originalParentId;
+                return parentIdMap.get(originalParentId) || null;
               }
               return row[c.name] ?? null;
             })
-        ];
-      });
+        ]);
+      }
+
+      if (dataRows.length === 0) continue;
 
       const batchSize = calculateBatchSize(columnNames.length, dataRows.length);
       const insertStmts = generateInsertBatchSQL(table.name, schema, columnNames, dataRows, batchSize);
@@ -973,38 +1034,37 @@ export function generateSmartImportSQL(
         ? ['id', ...columnMapping.map(m => m.existingCol)]
         : columnMapping.map(m => m.existingCol);
 
-      const dataRows = selectedRows.map(row => {
+      const dataRows: any[][] = [];
+      for (const row of selectedRows) {
         const originalId = row['_row_id'];
+        const actualId = tableIdMap.get(originalId);
+        if (!actualId) continue;
         
-        // Determine the actual ID to use
-        let actualId: string;
-        if (isMongoObjectId(originalId)) {
-          actualId = generateUUID();
-        } else if (isValidUUID(originalId)) {
-          actualId = originalId;
-        } else {
-          actualId = generateUUID();
+        // Validate _parent_id if this table has a parent
+        if (parentIdMap && columnMapping.some(m => m.importCol === '_parent_id')) {
+          const originalParentId = row['_parent_id'];
+          const resolvedParentId = parentIdMap.get(originalParentId);
+          if (!resolvedParentId) {
+            console.warn(`Skipping row in ${table.name} - parent ID ${originalParentId} not found`);
+            continue;
+          }
         }
         
-        // Store mapping for child tables
-        tableIdMap.set(originalId, actualId);
-        
         const mapped = columnMapping.map(m => {
-          // Handle _parent_id - resolve to actual parent ID
           if (m.importCol === '_parent_id' && parentIdMap) {
             const originalParentId = row[m.importCol];
-            const resolvedParentId = parentIdMap.get(originalParentId);
-            return resolvedParentId || originalParentId;
+            return parentIdMap.get(originalParentId) || null;
           }
           const value = row[m.importCol] ?? null;
-          // Apply casting if needed
           if (m.cast && value !== null) {
-            return value; // Value will be cast by PostgreSQL
+            return value;
           }
           return value;
         });
-        return shouldPrependId ? [actualId, ...mapped] : mapped;
-      });
+        dataRows.push(shouldPrependId ? [actualId, ...mapped] : mapped);
+      }
+
+      if (dataRows.length === 0) continue;
 
       const batchSize = calculateBatchSize(columnNames.length, dataRows.length);
       const insertStmts = generateInsertBatchSQL(targetTableName, schema, columnNames, dataRows, batchSize);
@@ -1063,33 +1123,33 @@ export function generateSmartImportSQL(
         ? ['id', ...columnMapping.map(m => m.existingCol)]
         : columnMapping.map(m => m.existingCol);
 
-      const dataRows = selectedRows.map(row => {
+      const dataRows: any[][] = [];
+      for (const row of selectedRows) {
         const originalId = row['_row_id'];
+        const actualId = tableIdMap.get(originalId);
+        if (!actualId) continue;
         
-        // Determine the actual ID to use
-        let actualId: string;
-        if (isMongoObjectId(originalId)) {
-          actualId = generateUUID();
-        } else if (isValidUUID(originalId)) {
-          actualId = originalId;
-        } else {
-          actualId = generateUUID();
+        // Validate _parent_id if this table has a parent
+        if (parentIdMap && columnMapping.some(m => m.importCol === '_parent_id')) {
+          const originalParentId = row['_parent_id'];
+          const resolvedParentId = parentIdMap.get(originalParentId);
+          if (!resolvedParentId) {
+            console.warn(`Skipping row in ${table.name} - parent ID ${originalParentId} not found`);
+            continue;
+          }
         }
         
-        // Store mapping for child tables
-        tableIdMap.set(originalId, actualId);
-        
         const mapped = columnMapping.map(m => {
-          // Handle _parent_id - resolve to actual parent ID
           if (m.importCol === '_parent_id' && parentIdMap) {
             const originalParentId = row[m.importCol];
-            const resolvedParentId = parentIdMap.get(originalParentId);
-            return resolvedParentId || originalParentId;
+            return parentIdMap.get(originalParentId) || null;
           }
           return row[m.importCol] ?? null;
         });
-        return shouldPrependId ? [actualId, ...mapped] : mapped;
-      });
+        dataRows.push(shouldPrependId ? [actualId, ...mapped] : mapped);
+      }
+
+      if (dataRows.length === 0) continue;
 
       const batchSize = calculateBatchSize(columnNames.length, dataRows.length);
       const insertStmts = generateInsertBatchSQL(targetTableName, schema, columnNames, dataRows, batchSize);
