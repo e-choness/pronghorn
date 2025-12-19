@@ -9,7 +9,6 @@ import {
   DropdownMenuItem, 
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { 
   Download, 
   Filter, 
@@ -306,22 +305,22 @@ export function QueryResultsViewer({
       </div>
 
       {/* Table */}
-      <ScrollArea className="flex-1">
+      <div className="flex-1 min-h-0 overflow-auto">
         <div className="min-w-max">
           <table className="w-full" style={{ fontSize: `${fontSize}px` }}>
-            <thead className="bg-muted/50 sticky top-0">
+            <thead className="bg-muted/50 sticky top-0 z-10">
               <tr>
-                <th className="px-2 py-2 text-left font-medium text-muted-foreground w-8">
+                <th className="px-2 py-2 text-left font-medium text-muted-foreground w-8 bg-muted/50">
                   <Checkbox
                     checked={selectedRows.size === processedRows.length && processedRows.length > 0}
                     onCheckedChange={handleSelectAll}
                   />
                 </th>
-                <th className="px-3 py-2 text-left font-medium text-muted-foreground w-10">#</th>
+                <th className="px-3 py-2 text-left font-medium text-muted-foreground w-10 bg-muted/50">#</th>
                 {columns.map((col) => (
                   <th
                     key={col}
-                    className="px-3 py-2 text-left font-medium text-muted-foreground cursor-pointer hover:bg-muted/70"
+                    className="px-3 py-2 text-left font-medium text-muted-foreground cursor-pointer hover:bg-muted/70 bg-muted/50"
                     onClick={() => handleSort(col)}
                   >
                     <div className="flex items-center gap-1">
@@ -400,8 +399,7 @@ export function QueryResultsViewer({
             </tbody>
           </table>
         </div>
-        <ScrollBar orientation="horizontal" />
-      </ScrollArea>
+      </div>
 
       {/* Pagination */}
       {totalRows && totalRows > limit && onPageChange && (
