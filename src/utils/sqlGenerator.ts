@@ -415,14 +415,19 @@ export function generateMultiTableImportSQL(
 
     if (selectedRows.length === 0) continue;
 
-    // Get columns (excluding _row_id, but including _parent_id)
-    const columnNames = table.columns
+    // Get columns: include 'id' explicitly using _row_id value, exclude _row_id from column list
+    const columnNames = ['id', ...table.columns
       .filter(c => c.name !== '_row_id')
-      .map(c => c.name);
+      .map(c => c.name)];
 
-    // Map rows to values
+    // Map rows to values, using _row_id for the 'id' column
     const dataRows = selectedRows.map(row => {
-      return columnNames.map(colName => row[colName] ?? null);
+      return [
+        row['_row_id'], // Use _row_id as the explicit 'id' value
+        ...table.columns
+          .filter(c => c.name !== '_row_id')
+          .map(c => row[c.name] ?? null)
+      ];
     });
 
     const batchSize = calculateBatchSize(columnNames.length, dataRows.length);
