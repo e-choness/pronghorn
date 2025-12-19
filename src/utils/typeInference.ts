@@ -310,6 +310,9 @@ function isNumeric(value: any): boolean {
   if (typeof value === 'number') return !isNaN(value);
   if (typeof value !== 'string') return false;
   const trimmed = value.trim();
+  // Ensure the ENTIRE string is a valid number (integers, decimals, negatives)
+  // This prevents "1221 - 8 Street SW" from being parsed as numeric
+  if (!/^-?\d*\.?\d+$/.test(trimmed)) return false;
   return !isNaN(parseFloat(trimmed)) && isFinite(parseFloat(trimmed));
 }
 

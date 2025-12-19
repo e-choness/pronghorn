@@ -41,6 +41,14 @@ export async function parseJsonFile(file: File): Promise<ParsedJsonData> {
 }
 
 /**
+ * Parse a JSON string directly (for pasted data)
+ */
+export function parseJsonString(text: string, tableName: string = 'pasted_data'): ParsedJsonData {
+  const data = JSON.parse(text);
+  return parseJsonData(data, tableName);
+}
+
+/**
  * Get a table name from a file name
  */
 function getTableNameFromFile(fileName: string): string {

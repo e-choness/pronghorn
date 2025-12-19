@@ -4,7 +4,6 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
@@ -160,129 +159,125 @@ export default function FieldMapper({
       )}
 
       {/* Mapping Table */}
-      <div className="flex-1 border rounded-lg overflow-hidden min-h-0">
-        <ScrollArea className="h-full">
-          <div className="overflow-x-auto">
-            <table className="min-w-max text-sm">
-              <thead className="sticky top-0 bg-muted/80 backdrop-blur z-10">
-                <tr>
-                  <th className="px-3 py-2 border-b text-left font-medium min-w-[150px]">Source Column</th>
-                  <th className="px-3 py-2 border-b text-center font-medium w-12">
-                    <ArrowRight className="h-4 w-4 mx-auto" />
-                  </th>
-                  <th className="px-3 py-2 border-b text-left font-medium min-w-[200px]">Target Column</th>
-                  <th className="px-3 py-2 border-b text-center font-medium w-20">Ignore</th>
-                  <th className="px-3 py-2 border-b text-center font-medium w-20">Cast</th>
-                  <th className="px-3 py-2 border-b text-left font-medium min-w-[120px]">Status</th>
+      <div className="flex-1 border rounded-lg min-h-0 overflow-auto">
+        <table className="min-w-max text-sm">
+          <thead className="sticky top-0 bg-muted/80 backdrop-blur z-10">
+            <tr>
+              <th className="px-3 py-2 border-b text-left font-medium min-w-[150px] bg-muted/80">Source Column</th>
+              <th className="px-3 py-2 border-b text-center font-medium w-12 bg-muted/80">
+                <ArrowRight className="h-4 w-4 mx-auto" />
+              </th>
+              <th className="px-3 py-2 border-b text-left font-medium min-w-[200px] bg-muted/80">Target Column</th>
+              <th className="px-3 py-2 border-b text-center font-medium w-20 bg-muted/80">Ignore</th>
+              <th className="px-3 py-2 border-b text-center font-medium w-20 bg-muted/80">Cast</th>
+              <th className="px-3 py-2 border-b text-left font-medium min-w-[120px] bg-muted/80">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {mappings.map((mapping, idx) => {
+              const status = getMatchStatus(mapping);
+              const targetCol = validTargetColumns.find(tc => tc.name === mapping.targetColumn);
+              
+              return (
+                <tr 
+                  key={idx} 
+                  className={cn(
+                    "hover:bg-muted/30",
+                    mapping.ignored && "opacity-50"
+                  )}
+                >
+                  <td className="px-3 py-2 border-b">
+                    <span className="font-mono text-xs">{mapping.sourceColumn}</span>
+                  </td>
+                  <td className="px-3 py-2 border-b text-center">
+                    <ArrowRight className={cn(
+                      "h-4 w-4 mx-auto",
+                      mapping.ignored && "text-muted-foreground",
+                      !mapping.ignored && mapping.targetColumn && "text-green-500"
+                    )} />
+                  </td>
+                  <td className="px-3 py-2 border-b">
+                    {mapping.ignored ? (
+                      <span className="text-muted-foreground italic">—</span>
+                    ) : (
+                      <Select
+                        value={mapping.targetColumn || '_none_'}
+                        onValueChange={(v) => updateMapping(idx, { 
+                          targetColumn: v === '_none_' ? null : v 
+                        })}
+                      >
+                        <SelectTrigger className="h-8 font-mono text-xs">
+                          <SelectValue placeholder="Select column" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_none_">
+                            <span className="text-muted-foreground">— None —</span>
+                          </SelectItem>
+                          {validTargetColumns.map(col => (
+                            <SelectItem 
+                              key={col.name} 
+                              value={col.name}
+                              disabled={mappings.some(m => m.targetColumn === col.name && m !== mapping)}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span>{col.name}</span>
+                                <Badge variant="outline" className="text-xs font-mono">
+                                  {col.type}
+                                </Badge>
+                                {col.nullable && (
+                                  <span className="text-xs text-muted-foreground">nullable</span>
+                                )}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 border-b text-center">
+                    <Checkbox
+                      checked={mapping.ignored}
+                      onCheckedChange={(checked) => updateMapping(idx, { 
+                        ignored: !!checked,
+                        targetColumn: checked ? null : mapping.targetColumn
+                      })}
+                    />
+                  </td>
+                  <td className="px-3 py-2 border-b text-center">
+                    <Checkbox
+                      checked={mapping.castingEnabled && enableCasting}
+                      onCheckedChange={(checked) => updateMapping(idx, { castingEnabled: !!checked })}
+                      disabled={mapping.ignored || !enableCasting}
+                    />
+                  </td>
+                  <td className="px-3 py-2 border-b">
+                    {status === 'exact' && (
+                      <Badge variant="default" className="bg-green-500/20 text-green-700 border-green-500/30">
+                        <Sparkles className="h-3 w-3 mr-1" />
+                        Exact match
+                      </Badge>
+                    )}
+                    {status === 'fuzzy' && (
+                      <Badge variant="secondary">
+                        Fuzzy match
+                      </Badge>
+                    )}
+                    {status === 'unmapped' && (
+                      <Badge variant="outline" className="text-amber-600 border-amber-500/30">
+                        Unmapped
+                      </Badge>
+                    )}
+                    {status === 'ignored' && (
+                      <Badge variant="outline" className="text-muted-foreground">
+                        Ignored
+                      </Badge>
+                    )}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {mappings.map((mapping, idx) => {
-                  const status = getMatchStatus(mapping);
-                  const targetCol = validTargetColumns.find(tc => tc.name === mapping.targetColumn);
-                  
-                  return (
-                    <tr 
-                      key={idx} 
-                      className={cn(
-                        "hover:bg-muted/30",
-                        mapping.ignored && "opacity-50"
-                      )}
-                    >
-                      <td className="px-3 py-2 border-b">
-                        <span className="font-mono text-xs">{mapping.sourceColumn}</span>
-                      </td>
-                      <td className="px-3 py-2 border-b text-center">
-                        <ArrowRight className={cn(
-                          "h-4 w-4 mx-auto",
-                          mapping.ignored && "text-muted-foreground",
-                          !mapping.ignored && mapping.targetColumn && "text-green-500"
-                        )} />
-                      </td>
-                      <td className="px-3 py-2 border-b">
-                        {mapping.ignored ? (
-                          <span className="text-muted-foreground italic">—</span>
-                        ) : (
-                          <Select
-                            value={mapping.targetColumn || '_none_'}
-                            onValueChange={(v) => updateMapping(idx, { 
-                              targetColumn: v === '_none_' ? null : v 
-                            })}
-                          >
-                            <SelectTrigger className="h-8 font-mono text-xs">
-                              <SelectValue placeholder="Select column" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="_none_">
-                                <span className="text-muted-foreground">— None —</span>
-                              </SelectItem>
-                              {validTargetColumns.map(col => (
-                                <SelectItem 
-                                  key={col.name} 
-                                  value={col.name}
-                                  disabled={mappings.some(m => m.targetColumn === col.name && m !== mapping)}
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <span>{col.name}</span>
-                                    <Badge variant="outline" className="text-xs font-mono">
-                                      {col.type}
-                                    </Badge>
-                                    {col.nullable && (
-                                      <span className="text-xs text-muted-foreground">nullable</span>
-                                    )}
-                                  </div>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 border-b text-center">
-                        <Checkbox
-                          checked={mapping.ignored}
-                          onCheckedChange={(checked) => updateMapping(idx, { 
-                            ignored: !!checked,
-                            targetColumn: checked ? null : mapping.targetColumn
-                          })}
-                        />
-                      </td>
-                      <td className="px-3 py-2 border-b text-center">
-                        <Checkbox
-                          checked={mapping.castingEnabled && enableCasting}
-                          onCheckedChange={(checked) => updateMapping(idx, { castingEnabled: !!checked })}
-                          disabled={mapping.ignored || !enableCasting}
-                        />
-                      </td>
-                      <td className="px-3 py-2 border-b">
-                        {status === 'exact' && (
-                          <Badge variant="default" className="bg-green-500/20 text-green-700 border-green-500/30">
-                            <Sparkles className="h-3 w-3 mr-1" />
-                            Exact match
-                          </Badge>
-                        )}
-                        {status === 'fuzzy' && (
-                          <Badge variant="secondary">
-                            Fuzzy match
-                          </Badge>
-                        )}
-                        {status === 'unmapped' && (
-                          <Badge variant="outline" className="text-amber-600 border-amber-500/30">
-                            Unmapped
-                          </Badge>
-                        )}
-                        {status === 'ignored' && (
-                          <Badge variant="outline" className="text-muted-foreground">
-                            Ignored
-                          </Badge>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </ScrollArea>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
 
       {/* Warnings */}

@@ -1,11 +1,9 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { ChevronLeft, ChevronRight, Upload, Sparkles, Database, FileSpreadsheet, FileJson, Check, Plus, ArrowRight, Loader2, HelpCircle, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Upload, Database, FileSpreadsheet, FileJson, Check, Plus, ArrowRight, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ExcelData } from '@/utils/parseExcel';
 import { ParsedJsonData, getJsonHeaders, getJsonRowsAsArray } from '@/utils/parseJson';
@@ -703,10 +701,19 @@ export default function DatabaseImportWizard({
     }
   };
 
+  // Check if a step can be navigated to (for forward navigation)
+  const canNavigateToStep = (stepIndex: number): boolean => {
+    if (stepIndex === currentStepIndex) return true;
+    if (stepIndex < currentStepIndex) return executionProgress?.status !== 'running';
+    // For forward navigation, check if current step can proceed
+    if (stepIndex === currentStepIndex + 1) return canProceed();
+    return false;
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col">
-        <DialogHeader>
+      <DialogContent className="w-[90vw] h-[90vh] max-w-none flex flex-col">
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Database className="h-5 w-5" />
             Import Data
@@ -714,15 +721,36 @@ export default function DatabaseImportWizard({
         </DialogHeader>
 
         {/* Progress Steps */}
-        <div className="flex items-center justify-between px-2 py-4 border-b border-border">
+        <div className="flex items-center justify-between px-2 py-4 border-b border-border shrink-0">
           {STEPS.map((step, index) => {
             const isActive = step.key === currentStep;
             const isCompleted = index < currentStepIndex;
-            // Can navigate to completed steps or the current step
-            const canNavigate = isCompleted && executionProgress?.status !== 'running';
+            // Can navigate to completed steps, current step, or next step if canProceed
+            const canNavigate = canNavigateToStep(index) && step.key !== currentStep;
             
             const handleStepClick = () => {
               if (canNavigate) {
+                // If navigating forward to review, generate SQL
+                if (step.key === 'review' && index > currentStepIndex) {
+                  if (action === 'create_new' && tableDef) {
+                    const batchSize = calculateBatchSize(tableDef.columns.length, selectedDataRows.length);
+                    const statements = generateFullImportSQL(tableDef, selectedDataRows, batchSize);
+                    setProposedSQL(statements);
+                    setSqlReviewed(false);
+                  } else if (action === 'import_existing' && targetTable && columnMappings.length > 0) {
+                    const statements = generateExistingTableInsertSQL(
+                      targetTable,
+                      schema,
+                      headers,
+                      columnMappings,
+                      selectedDataRows,
+                      enableCasting,
+                      targetColumns
+                    );
+                    setProposedSQL(statements);
+                    setSqlReviewed(false);
+                  }
+                }
                 setCurrentStep(step.key);
               }
             };
@@ -763,65 +791,13 @@ export default function DatabaseImportWizard({
           })}
         </div>
 
-        {/* AI Mode Toggle */}
-        <TooltipProvider>
-          <div className="flex flex-col gap-2 px-2 py-3 bg-muted/30 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Sparkles className={cn("h-4 w-4", aiMode ? "text-amber-500" : "text-muted-foreground")} />
-                <Label htmlFor="ai-mode" className="text-sm font-medium">AI-Assisted Mode</Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-xs">
-                    <p className="text-sm">
-                      <strong>Manual Mode:</strong> Rule-based type inference. You control all schema decisions.
-                    </p>
-                    <p className="text-sm mt-1">
-                      <strong>AI Mode:</strong> An LLM analyzes your data and proposes optimal table schemas and field mappings.
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-                {aiLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-              </div>
-              <div className="flex items-center gap-2">
-                {aiMode && currentStep === 'schema' && !aiLoading && (
-                  <Button variant="outline" size="sm" onClick={callAiAgent}>
-                    <Sparkles className="h-3 w-3 mr-1" />
-                    Analyze
-                  </Button>
-                )}
-                <Switch id="ai-mode" checked={aiMode} onCheckedChange={setAiMode} />
-              </div>
-            </div>
-            {/* Description when AI mode is enabled */}
-            {aiMode && (
-              <p className="text-xs text-muted-foreground pl-6">
-                AI will analyze your data structure and suggest optimal column types, table names, and field mappings. 
-                Click "Analyze" in the Schema step to get AI recommendations.
-              </p>
-            )}
-          </div>
-        </TooltipProvider>
-
-        {/* AI Explanation */}
-        {aiExplanation && (
-          <div className="px-2 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-            <div className="flex items-start gap-2">
-              <Sparkles className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
-              <p className="text-sm text-muted-foreground">{aiExplanation}</p>
-            </div>
-          </div>
-        )}
-
         {/* Step Content */}
-        <div className="flex-1 overflow-y-auto py-4 min-h-[300px]">
+        <div className="flex-1 overflow-y-auto py-4 min-h-0">
           {renderStepContent()}
         </div>
 
         {/* Navigation Footer */}
-        <div className="flex items-center justify-between pt-4 border-t border-border">
+        <div className="flex items-center justify-between pt-4 border-t border-border shrink-0">
           <Button variant="outline" onClick={goBack} disabled={!canGoBack}>
             <ChevronLeft className="h-4 w-4 mr-1" />
             Back
