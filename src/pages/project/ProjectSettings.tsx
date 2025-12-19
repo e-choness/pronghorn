@@ -475,7 +475,7 @@ export default function ProjectSettings() {
                 </Card>
 
                 {/* Project Activity Heatmap */}
-                <ProjectActivityHeatmap projectId={projectId!} shareToken={shareToken} />
+                <ProjectActivityHeatmap projectId={projectId!} shareToken={shareToken} isTokenSet={isTokenSet} />
 
                 {/* Danger Zone - Project Deletion (owner role required) */}
                 {isOwner && (

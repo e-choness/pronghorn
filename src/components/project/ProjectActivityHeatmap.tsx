@@ -26,13 +26,14 @@ interface ActivityResponse {
 interface ProjectActivityHeatmapProps {
   projectId: string;
   shareToken: string | null;
+  isTokenSet?: boolean;
 }
 
-export function ProjectActivityHeatmap({ projectId, shareToken }: ProjectActivityHeatmapProps) {
+export function ProjectActivityHeatmap({ projectId, shareToken, isTokenSet = true }: ProjectActivityHeatmapProps) {
   const [granularity, setGranularity] = useState<string>("week");
 
   const { data: activity, isLoading } = useQuery({
-    queryKey: ["project-activity", projectId, granularity],
+    queryKey: ["project-activity", projectId, granularity, shareToken],
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("project-activity", {
         body: { projectId, shareToken, granularity },
@@ -41,7 +42,7 @@ export function ProjectActivityHeatmap({ projectId, shareToken }: ProjectActivit
       if (error) throw error;
       return data as ActivityResponse;
     },
-    enabled: !!projectId,
+    enabled: !!projectId && isTokenSet && !!shareToken,
     staleTime: 60000, // Cache for 1 minute
   });
 
