@@ -141,7 +141,20 @@ function getGrokResponseSchema() {
               },
               params: {
                 type: "object",
-                description: "Operation-specific parameters",
+                description: "Operation-specific parameters. Only include parameters relevant to the operation type.",
+                properties: {
+                  path_prefix: { type: ["string", "null"], description: "Filter files by path prefix (for list_files)" },
+                  query: { type: "string", description: "Multi-term search query (for wildcard_search)" },
+                  keyword: { type: "string", description: "Single keyword to search (for search)" },
+                  file_id: { type: "string", description: "UUID of file from list_files (for read_file, edit_lines, delete_file, move_file)" },
+                  path: { type: "string", description: "File path for session-created files or create_file" },
+                  start_line: { type: "integer", description: "Starting line number 1-based (for edit_lines)" },
+                  end_line: { type: "integer", description: "Ending line number inclusive (for edit_lines)" },
+                  new_content: { type: "string", description: "Replacement content (for edit_lines)" },
+                  content: { type: "string", description: "File content (for create_file)" },
+                  new_path: { type: "string", description: "New file path (for move_file)" },
+                  file_path: { type: "string", description: "File path to unstage (for unstage_file)" },
+                },
               },
             },
             required: ["type", "params"],
@@ -207,7 +220,20 @@ function getClaudeResponseTool() {
               },
               params: {
                 type: "object",
-                description: "Operation-specific parameters",
+                description: "Operation-specific parameters. Only include parameters relevant to the operation type.",
+                properties: {
+                  path_prefix: { type: ["string", "null"], description: "Filter files by path prefix (for list_files)" },
+                  query: { type: "string", description: "Multi-term search query (for wildcard_search)" },
+                  keyword: { type: "string", description: "Single keyword to search (for search)" },
+                  file_id: { type: "string", description: "UUID of file from list_files (for read_file, edit_lines, delete_file, move_file)" },
+                  path: { type: "string", description: "File path for session-created files or create_file" },
+                  start_line: { type: "integer", description: "Starting line number 1-based (for edit_lines)" },
+                  end_line: { type: "integer", description: "Ending line number inclusive (for edit_lines)" },
+                  new_content: { type: "string", description: "Replacement content (for edit_lines)" },
+                  content: { type: "string", description: "File content (for create_file)" },
+                  new_path: { type: "string", description: "New file path (for move_file)" },
+                  file_path: { type: "string", description: "File path to unstage (for unstage_file)" },
+                },
                 additionalProperties: false,
               },
             },
@@ -1108,9 +1134,23 @@ Use them to understand context and inform your file operations.` : ''}`;
       const nonEditOps: any[] = [];
 
       for (const op of operations) {
+        // Handle malformed operations: convert params_summary to params for parameterless ops
+        if (op && !op.params && (op as any).params_summary !== undefined) {
+          const parameterlessOps = ['list_files', 'get_staged_changes', 'discard_all_staged'];
+          if (parameterlessOps.includes(op.type)) {
+            console.log(`[AGENT] Converting params_summary to params for parameterless operation: ${op.type}`);
+            op.params = {} as any;
+            if (op.type === 'list_files') {
+              op.params.path_prefix = null;
+            }
+          } else {
+            console.warn(`[AGENT] Cannot infer params from params_summary for operation: ${op.type}`);
+          }
+        }
+        
         // Skip invalid operations without params entirely - do NOT add to processing list
         if (!op || !op.params) {
-          console.warn(`[AGENT] Skipping invalid operation (missing params):`, JSON.stringify({ type: op?.type, params_summary: op?.params ? Object.keys(op.params) : [] }));
+          console.warn(`[AGENT] Skipping invalid operation (missing params):`, JSON.stringify({ type: op?.type, has_params_summary: !!(op as any)?.params_summary }));
           continue;
         }
         if (op.type === 'edit_lines') {
