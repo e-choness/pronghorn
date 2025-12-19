@@ -596,7 +596,7 @@ export default function DatabaseImportWizard({
       
       case 'clean':
         return (
-          <div className="h-[400px]">
+          <div className="h-full flex flex-col">
             {fileType === 'json' && jsonData ? (
               <JsonDataViewer
                 data={jsonData}
@@ -628,7 +628,7 @@ export default function DatabaseImportWizard({
         const isMultiTableJson = fileType === 'json' && jsonData && jsonData.tables.length > 1;
         
         return (
-          <div className="space-y-4 h-[450px] flex flex-col overflow-y-auto">
+          <div className="space-y-4 h-full flex flex-col overflow-y-auto">
             {/* Show relationship diagram for multi-table JSON */}
             {isMultiTableJson && (
               <div className="space-y-2">
@@ -752,7 +752,7 @@ export default function DatabaseImportWizard({
       
       case 'review':
         return (
-          <div className="h-[400px]">
+          <div className="h-full flex flex-col">
             <SqlReviewPanel
               statements={proposedSQL}
               reviewed={sqlReviewed}
@@ -770,7 +770,7 @@ export default function DatabaseImportWizard({
           : selectedDataRows.length;
         
         return (
-          <div className="h-[400px]">
+          <div className="h-full flex flex-col">
             {executionProgress ? (
               <ImportProgressTracker
                 progress={executionProgress}
