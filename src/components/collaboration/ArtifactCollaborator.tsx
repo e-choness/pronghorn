@@ -298,11 +298,8 @@ export function ArtifactCollaborator({
       setHasUnsavedChanges(false);
     }
     
-    // Send user message to database (async, don't await for UI responsiveness)
-    sendMessage('user', content).then(() => {
-      // Remove from optimistic after real message is persisted
-      setOptimisticMessages(prev => prev.filter(m => m.id !== optimisticId));
-    });
+    // DO NOT call sendMessage here - the edge function inserts the user message
+    // Just remove optimistic message after streaming completes
     
     setIsStreaming(true);
     setStreamingContent('');
@@ -387,7 +384,7 @@ export function ArtifactCollaborator({
     } catch (error) {
       console.error('Error with collaboration agent:', error);
       toast.error('Failed to get AI response');
-      // Add error message
+      // Add error message - this is an error case, so we do need to add a message
       await sendMessage('assistant', 'Sorry, I encountered an error processing your request. Please try again.');
     } finally {
       setIsStreaming(false);
@@ -446,12 +443,14 @@ export function ArtifactCollaborator({
     created_at: h.created_at,
   })), [history]);
   
-  // Calculate highlighted lines (diff between current and previous version)
+  // Calculate highlighted lines based on the most recent edit
+  // Show where the new content was inserted (start_line to start_line + new_content lines - 1)
   const highlightedLines = useMemo(() => {
     if (historyEntries.length === 0) return [];
     const latestEntry = historyEntries.find(h => h.version_number === latestVersion);
-    if (latestEntry && latestEntry.start_line && latestEntry.end_line) {
-      return [{ start: latestEntry.start_line, end: latestEntry.end_line }];
+    if (latestEntry && latestEntry.start_line && latestEntry.new_content) {
+      const newLineCount = latestEntry.new_content.split('\n').length;
+      return [{ start: latestEntry.start_line, end: latestEntry.start_line + newLineCount - 1 }];
     }
     return [];
   }, [historyEntries, latestVersion]);
