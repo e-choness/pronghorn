@@ -150,8 +150,8 @@ export function CollaborationChat({
             const isUser = message.role === 'user';
             
             return (
-              <div key={message.id}>
-                <div className="flex items-center gap-1.5 mb-1">
+              <div key={message.id} className="min-w-0 overflow-hidden">
+                <div className="flex items-center gap-1.5 mb-1 min-w-0">
                   {isUser ? (
                     <User className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                   ) : (
@@ -163,16 +163,16 @@ export function CollaborationChat({
                   </span>
                 </div>
                 <div
-                  className={`p-2 rounded-lg text-sm ${
+                  className={`p-2 rounded-lg text-sm min-w-0 overflow-hidden ${
                     isUser
                       ? 'bg-primary/5 border border-primary/10'
                       : 'bg-muted/30 border'
                   }`}
                 >
                   {isUser ? (
-                    <p className="whitespace-pre-wrap break-words text-sm">{message.content}</p>
+                    <p className="whitespace-pre-wrap break-words text-sm overflow-hidden">{message.content}</p>
                   ) : (
-                    <div className="text-sm whitespace-pre-wrap break-words [&_p]:m-0 [&_pre]:overflow-x-auto [&_pre]:text-xs [&_code]:text-xs">
+                    <div className="text-sm whitespace-pre-wrap break-words overflow-hidden [&_p]:m-0 [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre]:text-xs [&_code]:text-xs [&_code]:break-all">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
                         {message.content}
                       </ReactMarkdown>
