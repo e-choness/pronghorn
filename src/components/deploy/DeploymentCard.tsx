@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { 
   Play, Square, Trash2, ExternalLink, Settings, 
   RefreshCw, Cloud, Laptop, Server, GitBranch,
-  Rocket, CheckCircle, Clock, XCircle, Download, Eye, RotateCcw
+  Rocket, CheckCircle, Clock, XCircle, Download, Eye, RotateCcw, Copy, Check
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -47,6 +47,7 @@ const DeploymentCard = ({ deployment, shareToken, onUpdate, onSelect, isSelected
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState<string | null>(null);
+  const [copiedUrl, setCopiedUrl] = useState(false);
   const autoRefreshRef = useRef<NodeJS.Timeout | null>(null);
 
   const status = statusConfig[deployment.status] || statusConfig.pending;
@@ -247,19 +248,38 @@ const DeploymentCard = ({ deployment, shareToken, onUpdate, onSelect, isSelected
           {/* URL and last deployed */}
           <div className="text-xs text-muted-foreground mb-3">
             {deployment.platform === "pronghorn_cloud" && (
-              <a 
-                href={getDeploymentUrl()} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 hover:text-foreground transition-colors truncate"
-              >
-                <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                <span className="truncate">{getDeploymentUrl()}</span>
-              </a>
+              <div className="flex items-center gap-2">
+                <a 
+                  href={getDeploymentUrl()} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 hover:text-foreground transition-colors"
+                >
+                  <ExternalLink className="h-3 w-3 shrink-0" />
+                  <span>Open Service</span>
+                </a>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigator.clipboard.writeText(getDeploymentUrl());
+                    setCopiedUrl(true);
+                    toast.success("URL copied");
+                    setTimeout(() => setCopiedUrl(false), 2000);
+                  }}
+                  className="p-1 hover:bg-muted rounded transition-colors"
+                  title="Copy URL"
+                >
+                  {copiedUrl ? (
+                    <Check className="h-3 w-3 text-green-500" />
+                  ) : (
+                    <Copy className="h-3 w-3" />
+                  )}
+                </button>
+              </div>
             )}
             {deployment.platform === "local" && (
               <span className="flex items-center gap-1">
-                <Laptop className="h-3 w-3 flex-shrink-0" />
+                <Laptop className="h-3 w-3 shrink-0" />
                 <span className="truncate">Run: {deployment.run_command}</span>
               </span>
             )}
