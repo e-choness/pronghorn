@@ -327,12 +327,24 @@ Deno.serve(async (req) => {
           throw new Error("statements array is required for batch execution");
         }
         console.log(`[manage-database] Executing batch of ${body.statements.length} statements, transaction=${body.wrapInTransaction !== false}`);
-        result = await executeSqlBatch(
+        const batchResult = await executeSqlBatch(
           connectionString, 
           body.statements, 
           body.wrapInTransaction !== false
         );
-        break;
+        // Return batch result directly - it already has success field
+        // If batch failed, return 400 status so client knows it failed
+        if (!batchResult.success) {
+          console.error(`[manage-database] Batch execution failed at statement ${batchResult.failedIndex}: ${batchResult.error}`);
+          return new Response(JSON.stringify(batchResult), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        // Success - return with 200
+        return new Response(JSON.stringify(batchResult), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       case 'test_connection':
         // Already handled above for connectionId
         throw new Error("test_connection requires connectionId or connectionString");
