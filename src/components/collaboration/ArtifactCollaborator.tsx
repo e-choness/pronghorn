@@ -131,7 +131,19 @@ export function ArtifactCollaborator({
           setCollaborationId(activeCollab.id);
           setLocalContent(activeCollab.current_content);
         } else {
-          // Create new collaboration - the RPC will use artifact's current content as base
+          // Fetch fresh artifact content from database to ensure we have latest
+          const { data: freshArtifacts, error: artifactError } = await supabase.rpc(
+            'get_artifacts_with_token',
+            {
+              p_project_id: projectId,
+              p_token: shareToken || null,
+            }
+          );
+          
+          const freshArtifact = freshArtifacts?.find((a: any) => a.id === artifact.id);
+          const freshContent = freshArtifact?.content || artifact.content;
+          
+          // Create new collaboration with fresh artifact content
           const { data: newCollab, error: createError } = await supabase.rpc(
             'create_artifact_collaboration_with_token',
             {
@@ -144,7 +156,7 @@ export function ArtifactCollaborator({
 
           if (createError) throw createError;
           setCollaborationId(newCollab.id);
-          setLocalContent(artifact.content);
+          setLocalContent(freshContent);
         }
       } catch (error) {
         console.error('Error initializing collaboration:', error);
@@ -343,6 +355,7 @@ export function ArtifactCollaborator({
       const { error } = await supabase.rpc('merge_collaboration_to_artifact_with_token', {
         p_collaboration_id: collaborationId,
         p_token: shareToken || null,
+        p_close_session: false, // Keep collaboration session active, preserve history
       });
       
       if (error) throw error;
