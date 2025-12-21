@@ -49,7 +49,7 @@ export default function Landing() {
       icon: Settings, 
       label: "Settings", 
       description: "Configure project, link standards & tech stacks", 
-      phase: "setup",
+      phase: "plan",
       hasAgent: true,
       aiDetails: {
         title: "AI Model Configuration",
@@ -65,7 +65,7 @@ export default function Landing() {
       icon: Archive, 
       label: "Artifacts", 
       description: "Upload documents, images, reference files", 
-      phase: "setup",
+      phase: "plan",
       hasAgent: true,
       aiDetails: {
         title: "AI-Powered Document Processing",
@@ -81,9 +81,8 @@ export default function Landing() {
       icon: Users, 
       label: "Collaboration", 
       description: "AI-assisted document co-authoring with version control", 
-      phase: "setup",
+      phase: "plan",
       hasAgent: true,
-      featured: true,
       aiDetails: {
         title: "AI Collaboration Agent",
         capabilities: [
@@ -98,7 +97,7 @@ export default function Landing() {
       icon: MessageSquare, 
       label: "Chat", 
       description: "AI-powered conversations about your project", 
-      phase: "design", 
+      phase: "plan", 
       hasAgent: true,
       aiDetails: {
         title: "Project-Aware AI Conversations",
@@ -147,8 +146,7 @@ export default function Landing() {
       label: "Canvas", 
       description: "Visual architecture with 10+ AI agents", 
       phase: "design", 
-      hasAgent: true, 
-      featured: true,
+      hasAgent: true,
       aiDetails: {
         title: "AI Architecture Team (10 Agents)",
         capabilities: [
@@ -195,8 +193,7 @@ export default function Landing() {
       label: "Build", 
       description: "Autonomous AI coding agent", 
       phase: "ship", 
-      hasAgent: true, 
-      featured: true,
+      hasAgent: true,
       aiDetails: {
         title: "Autonomous Coding Agent",
         capabilities: [
@@ -519,12 +516,12 @@ export default function Landing() {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 max-w-5xl mx-auto">
             {workflowSteps.map((step, index) => {
               const phaseColors = {
-                setup: "border-blue-200 hover:border-blue-400 hover:bg-blue-50/50",
+                plan: "border-blue-200 hover:border-blue-400 hover:bg-blue-50/50",
                 design: "border-rose-200 hover:border-rose-400 hover:bg-rose-50/50",
                 ship: "border-emerald-200 hover:border-emerald-400 hover:bg-emerald-50/50",
               };
               const iconColors = {
-                setup: "text-blue-600 bg-blue-100",
+                plan: "text-blue-600 bg-blue-100",
                 design: "text-rose-600 bg-rose-100",
                 ship: "text-emerald-600 bg-emerald-100",
               };
@@ -532,19 +529,12 @@ export default function Landing() {
                 <div
                   key={index}
                   onClick={() => setSelectedStepIndex(index)}
-                  className={`relative bg-white rounded-xl p-4 border-2 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg cursor-pointer min-w-0 ${phaseColors[step.phase as keyof typeof phaseColors]} ${step.featured ? "ring-2 ring-offset-2 ring-[hsl(350,80%,60%)]" : ""}`}
+                  className={`relative bg-white rounded-xl p-4 border-2 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg cursor-pointer min-w-0 ${phaseColors[step.phase as keyof typeof phaseColors]}`}
                 >
                   {/* Step Number */}
                   <div className="absolute -top-2 -left-2 w-6 h-6 bg-[hsl(240,30%,15%)] text-white text-xs font-bold rounded-full flex items-center justify-center">
                     {index + 1}
                   </div>
-                  
-                  {/* AI Badge */}
-                  {step.hasAgent && (
-                    <div className="absolute -top-2 -right-2 w-6 h-6 bg-gradient-to-br from-amber-400 to-orange-500 text-white rounded-full flex items-center justify-center">
-                      <Bot className="w-3 h-3" />
-                    </div>
-                  )}
 
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 ${iconColors[step.phase as keyof typeof iconColors]}`}>
                     <step.icon className="w-5 h-5" />
@@ -581,7 +571,7 @@ export default function Landing() {
                     <DialogHeader>
                       <DialogTitle className="flex items-center gap-3">
                         <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                          selectedStep.phase === "setup" ? "bg-blue-100 text-blue-600" :
+                          selectedStep.phase === "plan" ? "bg-blue-100 text-blue-600" :
                           selectedStep.phase === "design" ? "bg-rose-100 text-rose-600" :
                           "bg-emerald-100 text-emerald-600"
                         }`}>
@@ -591,18 +581,12 @@ export default function Landing() {
                           <span className="text-lg">{selectedStep.label}</span>
                           <div className="flex items-center gap-2 mt-1">
                             <span className={`text-xs px-2 py-0.5 rounded-full ${
-                              selectedStep.phase === "setup" ? "bg-blue-100 text-blue-700" :
+                              selectedStep.phase === "plan" ? "bg-blue-100 text-blue-700" :
                               selectedStep.phase === "design" ? "bg-rose-100 text-rose-700" :
                               "bg-emerald-100 text-emerald-700"
                             }`}>
                               {selectedStep.phase.charAt(0).toUpperCase() + selectedStep.phase.slice(1)} Phase
                             </span>
-                            {selectedStep.hasAgent && (
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-100 to-orange-100 text-amber-700 flex items-center gap-1">
-                                <Bot className="w-3 h-3" />
-                                AI-Powered
-                              </span>
-                            )}
                           </div>
                         </div>
                       </DialogTitle>
@@ -653,19 +637,6 @@ export default function Landing() {
             </DialogContent>
           </Dialog>
 
-          {/* Legend */}
-          <div className="flex justify-center gap-8 mt-8 text-sm text-gray-600">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center">
-                <Bot className="w-3 h-3 text-white" />
-              </div>
-              <span>AI-Powered Step</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 ring-2 ring-[hsl(350,80%,60%)] ring-offset-2 rounded-lg"></div>
-              <span>Featured</span>
-            </div>
-          </div>
         </div>
       </section>
 
