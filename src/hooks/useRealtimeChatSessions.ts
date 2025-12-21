@@ -372,12 +372,54 @@ export const useRealtimeChatMessages = (
     );
   };
 
+  // Save assistant message (for AI responses after streaming completes)
+  // This does the RPC call AND broadcasts - unlike direct RPC calls
+  const saveAssistantMessage = async (content: string): Promise<ChatMessage | null> => {
+    if (!chatSessionId) return null;
+
+    try {
+      const { data, error } = await supabase.rpc("insert_chat_message_with_token", {
+        p_chat_session_id: chatSessionId,
+        p_token: shareToken || null,
+        p_role: "assistant",
+        p_content: content,
+      });
+
+      if (error) throw error;
+
+      // Broadcast using the subscribed channel reference (like Canvas does)
+      if (channelRef.current) {
+        channelRef.current.send({
+          type: 'broadcast',
+          event: 'chat_message_refresh',
+          payload: {}
+        });
+      }
+
+      // Also broadcast to project-level channel for local runner sync
+      if (projectId && sessionChannelRef.current) {
+        sessionChannelRef.current.send({
+          type: 'broadcast',
+          event: 'chat_message_refresh',
+          payload: { action: 'assistant_message_saved', sessionId: chatSessionId }
+        });
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Error saving assistant message:", error);
+      throw error;
+    }
+  };
+
   return {
     messages,
     isLoading,
     addMessage,
     addTemporaryMessage,
     updateStreamingMessage,
+    saveAssistantMessage,
     refresh: loadMessages,
+    channelRef,
   };
 };

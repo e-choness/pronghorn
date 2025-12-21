@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useShareToken } from "@/hooks/useShareToken";
 import { TokenRecoveryMessage } from "@/components/project/TokenRecoveryMessage";
 import { useRealtimeChatSessions, useRealtimeChatMessages, ChatMessage } from "@/hooks/useRealtimeChatSessions";
+import { useRealtimeArtifacts } from "@/hooks/useRealtimeArtifacts";
 import {
   Plus,
   Send,
@@ -92,8 +93,12 @@ export default function Chat() {
     addMessage,
     updateStreamingMessage,
     addTemporaryMessage,
+    saveAssistantMessage,
     refresh: refreshMessages,
-  } = useRealtimeChatMessages(selectedSessionId || undefined, shareToken, isTokenSet && !!selectedSessionId);
+  } = useRealtimeChatMessages(selectedSessionId || undefined, shareToken, isTokenSet && !!selectedSessionId, projectId);
+
+  // Use artifacts hook for proper broadcast when saving artifacts
+  const { addArtifact } = useRealtimeArtifacts(projectId, shareToken, isTokenSet);
 
   // Fetch project settings for model configuration
   const { data: project } = useQuery({
@@ -352,16 +357,8 @@ export default function Chat() {
     toast.loading("Saving as artifact...", { id: "save-message" });
 
     try {
-      const { data, error } = await supabase.rpc("insert_artifact_with_token", {
-        p_project_id: projectId,
-        p_token: shareToken || null,
-        p_content: messageContent,
-        p_source_type: "chat_message",
-        p_source_id: selectedSessionId,
-        p_image_url: null,
-      });
-
-      if (error) throw error;
+      // Use addArtifact from hook - does RPC AND broadcasts
+      await addArtifact(messageContent, "chat_message", selectedSessionId || undefined);
       toast.success("Message saved as artifact", { id: "save-message" });
     } catch (error) {
       console.error("Error saving artifact:", error);
@@ -529,26 +526,13 @@ export default function Chat() {
 
       // Save to database and replace temp message with real one
       if (fullResponse) {
-        const { data, error } = await supabase.rpc("insert_chat_message_with_token", {
-          p_chat_session_id: selectedSessionId,
-          p_token: shareToken || null,
-          p_role: "assistant",
-          p_content: fullResponse,
-        });
-
-        if (error) throw error;
+        // Use saveAssistantMessage from hook - does RPC AND broadcasts
+        const savedMessage = await saveAssistantMessage(fullResponse);
 
         // Replace temp message with real DB message
-        if (data) {
-          updateStreamingMessage(assistantTempId, data.content, data.id);
+        if (savedMessage) {
+          updateStreamingMessage(assistantTempId, savedMessage.content, savedMessage.id);
         }
-
-        // Broadcast refresh event for real-time sync
-        await supabase.channel(`chat-messages-${selectedSessionId}`).send({
-          type: 'broadcast',
-          event: 'chat_message_refresh',
-          payload: {}
-        });
       }
     } catch (error) {
       console.error("Error streaming response:", error);
@@ -624,16 +608,8 @@ export default function Chat() {
         )
         .join("\n---\n\n");
 
-      const { data, error } = await supabase.rpc("insert_artifact_with_token", {
-        p_project_id: projectId,
-        p_token: shareToken || null,
-        p_content: chatContent,
-        p_source_type: "chat_session",
-        p_source_id: selectedSessionId,
-        p_image_url: null,
-      });
-
-      if (error) throw error;
+      // Use addArtifact from hook - does RPC AND broadcasts
+      await addArtifact(chatContent, "chat_session", selectedSessionId);
       toast.success("Full chat saved as artifact", { id: "save-full" });
     } catch (error) {
       console.error("Error saving chat as artifact:", error);
@@ -658,16 +634,8 @@ export default function Chat() {
     try {
       const summaryContent = `# ${session.ai_title || session.title || "Chat Summary"}\n\n${session.ai_summary}`;
 
-      const { data, error } = await supabase.rpc("insert_artifact_with_token", {
-        p_project_id: projectId,
-        p_token: shareToken || null,
-        p_content: summaryContent,
-        p_source_type: "chat_summary",
-        p_source_id: selectedSessionId,
-        p_image_url: null,
-      });
-
-      if (error) throw error;
+      // Use addArtifact from hook - does RPC AND broadcasts
+      await addArtifact(summaryContent, "chat_summary", selectedSessionId);
       toast.success("Summary saved as artifact", { id: "save-summary" });
     } catch (error) {
       console.error("Error saving summary as artifact:", error);

@@ -26,6 +26,7 @@ import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
 import { SavedSpecificationsPanel, SavedSpecification } from "@/components/specifications/SavedSpecificationsPanel";
 import { VersionHistoryDropdown } from "@/components/specifications/VersionHistoryDropdown";
 import { useRealtimeSpecifications } from "@/hooks/useRealtimeSpecifications";
+import { useRealtimeArtifacts } from "@/hooks/useRealtimeArtifacts";
 
 interface Agent {
   id: string;
@@ -73,6 +74,9 @@ export default function Specifications() {
     broadcastRefresh: broadcastSpecificationRefresh,
     hasSpecifications: hasGeneratedSpec
   } = useRealtimeSpecifications(projectId, shareToken, isTokenSet);
+
+  // Use artifacts hook for proper broadcast when saving artifacts
+  const { addArtifact, updateArtifact } = useRealtimeArtifacts(projectId, shareToken, isTokenSet);
 
   // Track currently selected/viewed version for each agent
   const [selectedVersions, setSelectedVersions] = useState<Record<string, SavedSpecification>>({});
@@ -595,27 +599,12 @@ export default function Specifications() {
     const artifactTitle = `${spec.agent_title} (v${spec.version})`;
     
     try {
-      const { data: artifact, error } = await supabase.rpc("insert_artifact_with_token", {
-        p_project_id: projectId,
-        p_token: shareToken || null,
-        p_content: spec.generated_spec,
-        p_source_type: "specification",
-        p_source_id: spec.id,
-        p_image_url: null,
-      });
-      
-      if (error) throw error;
+      // Use addArtifact from hook - does RPC AND broadcasts
+      const artifact = await addArtifact(spec.generated_spec, "specification", spec.id);
       
       // Update the artifact with the title
       if (artifact?.id) {
-        await supabase.rpc("update_artifact_with_token", {
-          p_id: artifact.id,
-          p_token: shareToken || null,
-          p_content: spec.generated_spec,
-          p_ai_title: artifactTitle,
-          p_ai_summary: null,
-          p_image_url: null,
-        });
+        await updateArtifact(artifact.id, spec.generated_spec, artifactTitle);
       }
       
       toast.success(`${artifactTitle} saved as artifact`, { id: "save-artifact" });
