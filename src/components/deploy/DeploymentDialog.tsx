@@ -190,34 +190,37 @@ const DeploymentDialog = ({
     try {
       const { envVars: decryptedEnvVars } = await getDeploymentSecrets(deploymentId, shareToken);
       
-      if (decryptedEnvVars && Object.keys(decryptedEnvVars).length > 0) {
-        const envVarsArray = Object.entries(decryptedEnvVars).map(([key, value]) => ({
-          key,
-          value,
-        }));
-        setEnvVars(envVarsArray);
-        setOriginalKeys(new Set(Object.keys(decryptedEnvVars)));
-      } else {
-        // Fallback: load keys from deployment.env_vars (for backwards compatibility)
-        const storedEnvVars = deployment?.env_vars as Record<string, boolean> | null;
-        if (storedEnvVars) {
-          const keys = Object.keys(storedEnvVars);
-          setOriginalKeys(new Set(keys));
-          setEnvVars(keys.map((key) => ({ key, value: "" })));
+      // If we got decrypted env vars (even if empty object), use them
+      if (decryptedEnvVars && typeof decryptedEnvVars === 'object') {
+        const entries = Object.entries(decryptedEnvVars);
+        if (entries.length > 0) {
+          const envVarsArray = entries.map(([key, value]) => ({
+            key,
+            value,
+          }));
+          setEnvVars(envVarsArray);
+          setOriginalKeys(new Set(Object.keys(decryptedEnvVars)));
         } else {
-          setOriginalKeys(new Set());
+          // Empty object - legitimately no env vars
           setEnvVars([]);
+          setOriginalKeys(new Set());
         }
+      } else {
+        // No encrypted data found - clear state
+        setEnvVars([]);
+        setOriginalKeys(new Set());
       }
     } catch (error) {
       console.log("[DeploymentDialog] Could not load encrypted secrets (may not be owner):", error);
-      // Fallback: load keys only from deployment.env_vars
-      const storedEnvVars = deployment?.env_vars as Record<string, boolean> | null;
-      if (storedEnvVars) {
-        const keys = Object.keys(storedEnvVars);
+      // Backwards compatibility: ONLY use old format if env_vars is an OBJECT (not encrypted string)
+      const storedEnvVars = deployment?.env_vars;
+      if (storedEnvVars && typeof storedEnvVars === 'object' && !Array.isArray(storedEnvVars)) {
+        // Old format: {KEY: true} - show keys only without values
+        const keys = Object.keys(storedEnvVars as Record<string, unknown>);
         setOriginalKeys(new Set(keys));
         setEnvVars(keys.map((key) => ({ key, value: "" })));
       } else {
+        // Either no data or it's an encrypted string we can't decrypt - clear state
         setOriginalKeys(new Set());
         setEnvVars([]);
       }
