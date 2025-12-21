@@ -432,11 +432,27 @@ Start your response with { and end with }.`;
               } else if (op.type === "edit_lines") {
                 const { start_line, end_line, new_content, narrative } = op.params;
 
+                // Validate new_content before processing
+                if (new_content === undefined || new_content === null) {
+                  console.error("edit_lines operation missing new_content:", op.params);
+                  operationResults.push({
+                    type: "edit_lines",
+                    success: false,
+                    error: "Missing new_content in edit operation",
+                  });
+                  continue;
+                }
+
+                // Coerce new_content to string if needed
+                const contentToInsert = typeof new_content === 'string' 
+                  ? new_content 
+                  : String(new_content);
+
                 // Perform the edit
                 const lines = currentContent.split("\n");
                 const before = lines.slice(0, start_line - 1);
                 const after = lines.slice(end_line);
-                const newLines = new_content.split("\n");
+                const newLines = contentToInsert.split("\n");
                 currentContent = [...before, ...newLines, ...after].join("\n");
 
                 // Get latest version
