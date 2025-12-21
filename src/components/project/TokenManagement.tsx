@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { setProjectToken } from "@/lib/tokenCache";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +40,16 @@ export function TokenManagement({ projectId, shareToken }: TokenManagementProps)
   const [newTokenExpiry, setNewTokenExpiry] = useState("");
   const [visibleTokens, setVisibleTokens] = useState<Set<string>>(new Set());
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  
+  // Track the current active token (may be updated if owner rolls their own token)
+  const [activeToken, setActiveToken] = useState<string | null>(shareToken);
+  
+  // Keep activeToken in sync with shareToken prop initially
+  useEffect(() => {
+    if (shareToken && !activeToken) {
+      setActiveToken(shareToken);
+    }
+  }, [shareToken, activeToken]);
 
   // Broadcast refresh to other clients
   const broadcastRefresh = useCallback(() => {
@@ -56,7 +67,7 @@ export function TokenManagement({ projectId, shareToken }: TokenManagementProps)
     queryFn: async () => {
       const { data, error } = await supabase.rpc("get_project_tokens_with_token" as any, {
         p_project_id: projectId,
-        p_token: shareToken || null,
+        p_token: activeToken || shareToken || null,
       });
 
       if (error) throw error;
@@ -96,7 +107,7 @@ export function TokenManagement({ projectId, shareToken }: TokenManagementProps)
     mutationFn: async () => {
       const { data, error } = await supabase.rpc("create_project_token_with_token" as any, {
         p_project_id: projectId,
-        p_token: shareToken || null,
+        p_token: activeToken || shareToken || null,
         p_role: newTokenRole,
         p_label: newTokenLabel || null,
         p_expires_at: newTokenExpiry ? new Date(newTokenExpiry).toISOString() : null,
@@ -123,7 +134,7 @@ export function TokenManagement({ projectId, shareToken }: TokenManagementProps)
     mutationFn: async (tokenId: string) => {
       const { error } = await supabase.rpc("delete_project_token_with_token" as any, {
         p_token_id: tokenId,
-        p_token: shareToken || null,
+        p_token: activeToken || shareToken || null,
       });
 
       if (error) throw error;
@@ -138,27 +149,51 @@ export function TokenManagement({ projectId, shareToken }: TokenManagementProps)
     },
   });
 
+  // Track which token we're rolling to check if it's our own
+  const [rollingTokenValue, setRollingTokenValue] = useState<string | null>(null);
+  
   const rollTokenMutation = useMutation({
-    mutationFn: async (tokenId: string) => {
+    mutationFn: async ({ tokenId, oldTokenValue }: { tokenId: string; oldTokenValue: string }) => {
+      // Store the old value to check later
+      setRollingTokenValue(oldTokenValue);
+      
       const { data, error } = await supabase.rpc("roll_project_token_with_token" as any, {
         p_token_id: tokenId,
-        p_token: shareToken || null,
+        p_token: activeToken || shareToken || null,
       });
 
       if (error) throw error;
-      return data as string;
+      return { newToken: data as string, oldToken: oldTokenValue };
     },
-    onSuccess: (newToken) => {
+    onSuccess: ({ newToken, oldToken }) => {
+      // Check if we just rolled our own token
+      const currentToken = activeToken || shareToken;
+      if (oldToken === currentToken) {
+        // Update the token cache immediately
+        setProjectToken(projectId, newToken);
+        // Update local state
+        setActiveToken(newToken);
+        // Also set the new token in the Supabase session
+        Promise.resolve(supabase.rpc("set_share_token", { token: newToken })).catch(console.error);
+        
+        toast.success("Your access token has been regenerated");
+      } else {
+        toast.success("Token regenerated successfully");
+      }
+      
       queryClient.invalidateQueries({ queryKey: ["project-tokens", projectId] });
       broadcastRefresh();
-      toast.success("Token regenerated successfully");
+      
       // Copy the new token URL to clipboard
       const url = `https://pronghorn.red/project/${projectId}/requirements/t/${newToken}`;
       navigator.clipboard.writeText(url);
       toast.info("New token URL copied to clipboard");
+      
+      setRollingTokenValue(null);
     },
     onError: (error: Error) => {
       toast.error(`Failed to regenerate token: ${error.message}`);
+      setRollingTokenValue(null);
     },
   });
 
@@ -394,7 +429,7 @@ export function TokenManagement({ projectId, shareToken }: TokenManagementProps)
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
                           <AlertDialogAction
-                            onClick={() => rollTokenMutation.mutate(token.id)}
+                            onClick={() => rollTokenMutation.mutate({ tokenId: token.id, oldTokenValue: token.token })}
                             disabled={rollTokenMutation.isPending}
                           >
                             {rollTokenMutation.isPending ? "Regenerating..." : "Regenerate"}
