@@ -870,6 +870,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           id: string
+          project_id: string
           role: string
         }
         Insert: {
@@ -878,6 +879,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          project_id: string
           role: string
         }
         Update: {
@@ -886,6 +888,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          project_id?: string
           role?: string
         }
         Relationships: [
@@ -894,6 +897,13 @@ export type Database = {
             columns: ["chat_session_id"]
             isOneToOne: false
             referencedRelation: "chat_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_messages_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]
@@ -3080,6 +3090,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           id: string
+          project_id: string
           role: string
         }[]
         SetofOptions: {
@@ -4171,6 +4182,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           id: string
+          project_id: string
           role: string
         }
         SetofOptions: {
