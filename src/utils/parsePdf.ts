@@ -110,8 +110,31 @@ export const extractPDFText = async (arrayBuffer: ArrayBuffer): Promise<PDFTextC
       includeMarkedContent: true
     });
     const pageText = textContentItems.items
-      .map((item: unknown) => (item as { str?: string }).str || '')
-      .join(' ')
+      .map((item: unknown, index: number, arr: unknown[]) => {
+        const typedItem = item as { str?: string; hasEOL?: boolean; transform?: number[] };
+        const text = typedItem.str || '';
+        
+        // Check if this item ends with a line break (explicit EOL marker)
+        if (typedItem.hasEOL) {
+          return text + '\n';
+        }
+        
+        // Check for significant Y position change (paragraph break)
+        if (index < arr.length - 1) {
+          const nextItem = arr[index + 1] as { transform?: number[] };
+          if (typedItem.transform && nextItem.transform) {
+            const yDiff = Math.abs(typedItem.transform[5] - nextItem.transform[5]);
+            if (yDiff > 12) { // Significant vertical gap indicates paragraph break
+              return text + '\n';
+            }
+          }
+        }
+        
+        return text + ' ';
+      })
+      .join('')
+      .replace(/\n{3,}/g, '\n\n') // Normalize excessive newlines to double
+      .replace(/[ \t]+\n/g, '\n') // Remove trailing spaces before newlines
       .trim();
     textContent.push(pageText);
   }

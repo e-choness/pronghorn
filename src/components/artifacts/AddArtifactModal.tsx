@@ -188,8 +188,8 @@ export function AddArtifactModal({
     { id: "excel", label: "Excel", icon: <FileSpreadsheet className="h-4 w-4" />, count: excelRowsCount > 0 ? (excelMergeAsOne ? 1 : excelRowsCount) : 0 },
     { id: "text", label: "Text Files", icon: <FileText className="h-4 w-4" />, count: selectedTextFilesCount },
     { id: "pptx", label: "PowerPoint", icon: <Presentation className="h-4 w-4" />, count: pptxCount },
-    { id: "docx", label: "Word", icon: <FileText className="h-4 w-4" />, count: docxFiles.length },
     { id: "pdf", label: "PDF", icon: <FileIcon className="h-4 w-4" />, count: pdfCount },
+    { id: "docx", label: "Word", icon: <FileText className="h-4 w-4" />, count: docxFiles.length },
   ];
 
   // Handlers for universal upload
@@ -716,8 +716,8 @@ export function AddArtifactModal({
 
               <ScrollArea className="flex-1">
                 <div className="p-1.5 space-y-0.5">
-                  {/* Active tabs (first 6 including PPTX) */}
-                  {tabs.slice(0, 6).map(tab => renderSidebarButton(tab))}
+                  {/* Active tabs (first 7 including PPTX and PDF) */}
+                  {tabs.slice(0, 7).map(tab => renderSidebarButton(tab))}
 
                   <Separator className="my-1.5" />
                   
@@ -727,8 +727,8 @@ export function AddArtifactModal({
                     </div>
                   )}
 
-                  {/* Coming soon tabs (Word, PDF) */}
-                  {tabs.slice(6).map(tab => renderSidebarButton(tab, true))}
+                  {/* Coming soon tabs (Word only) */}
+                  {tabs.slice(7).map(tab => renderSidebarButton(tab, true))}
                 </div>
               </ScrollArea>
             </div>
