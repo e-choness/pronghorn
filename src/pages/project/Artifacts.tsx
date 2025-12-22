@@ -71,6 +71,7 @@ export default function Artifacts() {
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [collaboratingArtifact, setCollaboratingArtifact] = useState<any>(null);
+  const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
 
   // Fetch project settings for model configuration
   const { data: project } = useQuery({
@@ -444,11 +445,17 @@ ${artifact.content}`;
                       </CardHeader>
                       <CardContent className="space-y-4">
                         {artifact.image_url && (
-                          <div className="rounded-lg border overflow-hidden bg-muted">
+                          <div 
+                            className="rounded-lg border overflow-hidden bg-muted cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all"
+                            onClick={() => setPreviewImage({ 
+                              url: artifact.image_url!, 
+                              title: artifact.ai_title || "Artifact image" 
+                            })}
+                          >
                             <img 
                               src={artifact.image_url} 
                               alt={artifact.ai_title || "Artifact image"}
-                              className="w-full h-auto object-contain max-h-96"
+                              className="w-full h-auto object-contain max-h-64"
                             />
                           </div>
                         )}
@@ -496,7 +503,11 @@ ${artifact.content}`;
                                 <img 
                                   src={artifact.image_url} 
                                   alt={artifact.ai_title || "Artifact image"}
-                                  className="w-32 h-auto object-contain rounded border"
+                                  className="w-32 h-auto object-contain rounded border cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all"
+                                  onClick={() => setPreviewImage({ 
+                                    url: artifact.image_url!, 
+                                    title: artifact.ai_title || "Artifact image" 
+                                  })}
                                 />
                               )}
                             </div>
@@ -630,6 +641,24 @@ ${artifact.content}`;
                 Cancel
               </Button>
               <Button onClick={handleUpdateArtifact}>Save Changes</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Image Preview Modal */}
+      {previewImage && (
+        <Dialog open={!!previewImage} onOpenChange={() => setPreviewImage(null)}>
+          <DialogContent className="max-w-[90vw] max-h-[90vh] p-4">
+            <DialogHeader>
+              <DialogTitle>{previewImage.title}</DialogTitle>
+            </DialogHeader>
+            <div className="flex items-center justify-center overflow-auto max-h-[80vh]">
+              <img 
+                src={previewImage.url} 
+                alt={previewImage.title}
+                className="max-w-full max-h-[75vh] object-contain"
+              />
             </div>
           </DialogContent>
         </Dialog>
