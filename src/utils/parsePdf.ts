@@ -6,30 +6,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).toString();
 
-// CMap and standard font configuration for proper text encoding
-// Required for PDFs with custom font encodings (decorative fonts, non-Latin scripts, etc.)
-const PDF_CONFIG = {
-  cMapUrl: 'https://unpkg.com/pdfjs-dist@4.8.69/cmaps/',
-  cMapPacked: true,
-  standardFontDataUrl: 'https://unpkg.com/pdfjs-dist@4.8.69/standard_fonts/',
-  // Enable extra font properties for debugging
-  fontExtraProperties: true,
-  // Disable font face to force PDF.js to handle fonts internally
-  disableFontFace: false,
-  // Enable verbosity for font warnings
-  verbosity: pdfjsLib.VerbosityLevel.WARNINGS,
-};
-
-/**
- * Helper to create a configured document loading task
- */
-const getDocumentWithConfig = (data: ArrayBuffer) => {
-  return pdfjsLib.getDocument({
-    data,
-    ...PDF_CONFIG,
-  });
-};
-
 /**
  * Clone an ArrayBuffer to prevent detachment issues
  */
@@ -107,7 +83,7 @@ export const getPDFInfo = async (arrayBuffer: ArrayBuffer): Promise<PDFInfo> => 
   if (!arrayBuffer) throw new Error('Invalid PDF input');
 
   const safeArrayBuffer = cloneArrayBuffer(arrayBuffer);
-  const loadingTask = getDocumentWithConfig(safeArrayBuffer);
+  const loadingTask = pdfjsLib.getDocument({ data: safeArrayBuffer });
   const pdf = await loadingTask.promise;
 
   return {
@@ -124,47 +100,15 @@ export const extractPDFText = async (arrayBuffer: ArrayBuffer): Promise<PDFTextC
   if (!arrayBuffer) throw new Error('Invalid PDF input');
 
   const safeArrayBuffer = cloneArrayBuffer(arrayBuffer);
-  const loadingTask = getDocumentWithConfig(safeArrayBuffer);
+  const loadingTask = pdfjsLib.getDocument({ data: safeArrayBuffer });
   const pdf = await loadingTask.promise;
   const textContent: string[] = [];
 
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const textContentItems = await page.getTextContent({
-      includeMarkedContent: true,
-      disableNormalization: false,
+      includeMarkedContent: true
     });
-    
-    // DEBUG: Log font styles and text items for EVERY page to find where corruption starts
-    console.group(`🔍 PDF Font Diagnostics - Page ${i}`);
-    console.log('Font Styles:', textContentItems.styles);
-    
-    // Log each unique font used on this page
-    const fontsUsed = new Set<string>();
-    textContentItems.items.forEach((item: unknown) => {
-      const typedItem = item as { fontName?: string };
-      if (typedItem.fontName) {
-        fontsUsed.add(typedItem.fontName);
-      }
-    });
-    console.log('Fonts used on page:', Array.from(fontsUsed));
-    
-    // Log first 5 text items with char codes to spot encoding issues
-    const sampleItems = textContentItems.items.slice(0, 5) as Array<{ str?: string; fontName?: string }>;
-    sampleItems.forEach((item, idx) => {
-      if (item.str) {
-        const charCodes = Array.from(item.str).map(c => c.charCodeAt(0));
-        // Flag if char codes are in suspicious ranges (extended Latin, private use, etc.)
-        const hasWeirdCodes = charCodes.some(c => (c > 127 && c < 256) || c > 0xF000);
-        console.log(
-          `Item ${idx}: "${item.str}" | Font: ${item.fontName} | CharCodes:`, 
-          charCodes, 
-          hasWeirdCodes ? '⚠️ POSSIBLE ENCODING ISSUE' : '✓'
-        );
-      }
-    });
-    console.groupEnd();
-    
     const pageText = textContentItems.items
       .map((item: unknown, index: number, arr: unknown[]) => {
         const typedItem = item as { str?: string; hasEOL?: boolean; transform?: number[] };
@@ -209,7 +153,7 @@ export const rasterizePdfPage = async (
   scale = 2.5
 ): Promise<string> => {
   const safeArrayBuffer = cloneArrayBuffer(pdfArrayBuffer);
-  const loadingTask = getDocumentWithConfig(safeArrayBuffer);
+  const loadingTask = pdfjsLib.getDocument({ data: safeArrayBuffer });
   const pdf = await loadingTask.promise;
 
   const page = await pdf.getPage(pageIndex + 1);
@@ -254,7 +198,7 @@ export const createPageThumbnails = async (
   if (!arrayBuffer) throw new Error('Invalid PDF input');
 
   const safeArrayBuffer = cloneArrayBuffer(arrayBuffer);
-  const loadingTask = getDocumentWithConfig(safeArrayBuffer);
+  const loadingTask = pdfjsLib.getDocument({ data: safeArrayBuffer });
   const pdf = await loadingTask.promise;
   const thumbnails = new Map<number, string>();
 
@@ -298,7 +242,7 @@ export const extractPDFImages = async (
   if (!arrayBuffer) throw new Error('Invalid PDF input');
 
   const safeArrayBuffer = cloneArrayBuffer(arrayBuffer);
-  const loadingTask = getDocumentWithConfig(safeArrayBuffer);
+  const loadingTask = pdfjsLib.getDocument({ data: safeArrayBuffer });
   const pdf = await loadingTask.promise;
   const images = new Map<string, PDFEmbeddedImage>();
 
@@ -433,18 +377,14 @@ export interface ProcessedPDFFile {
   pdfInfo: PDFInfo;
   pagesText: string[];
   arrayBuffer: ArrayBuffer;
-  extractionMethod: 'standard' | 'ocr';
-  ocrConfidence?: number;
 }
 
 /**
  * Process a PDF file and return metadata and text content
- * Automatically falls back to OCR if encoding issues are detected
  */
 export const processPDFFile = async (
   file: File,
-  onProgress?: (stage: string, progress: number) => void,
-  forceOcr = false // Option to force OCR mode
+  onProgress?: (stage: string, progress: number) => void
 ): Promise<ProcessedPDFFile> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -460,50 +400,21 @@ export const processPDFFile = async (
         onProgress?.('Getting PDF info...', 20);
         const pdfInfo = await getPDFInfo(arrayBuffer);
         
-        // Step 1: Try standard text extraction first (unless forceOcr)
-        if (!forceOcr) {
-          onProgress?.('Extracting text...', 50);
-          const { pagesText } = await extractPDFText(arrayBuffer);
-          
-          // Step 2: Check for encoding issues
-          const { detectEncodingIssues } = await import('./parsePdfOcr');
-          const { hasIssues, issuePages, suspiciousRatio } = detectEncodingIssues(pagesText);
-          
-          if (!hasIssues) {
-            // Standard extraction worked fine
-            onProgress?.('Complete!', 100);
-            return resolve({
-              file: { name: file.name, size: file.size, type: file.type },
-              pdfInfo,
-              pagesText,
-              arrayBuffer,
-              extractionMethod: 'standard'
-            });
-          }
-          
-          // Encoding issues detected - switch to OCR
-          console.warn(`⚠️ Encoding issues detected on pages: ${issuePages.join(', ')} (${(suspiciousRatio * 100).toFixed(1)}% suspicious chars)`);
-          console.log('🔄 Switching to OCR mode for accurate text extraction...');
-          onProgress?.('Encoding issues detected. Switching to OCR...', 55);
-        }
-        
-        // Step 3: Use OCR extraction (either forced or as fallback)
-        const { extractPDFTextWithOCR } = await import('./parsePdfOcr');
-        const { pagesText: ocrText, confidence } = await extractPDFTextWithOCR(
-          arrayBuffer,
-          'eng',
-          onProgress
-        );
-        
+        onProgress?.('Extracting text...', 50);
+        const { pagesText } = await extractPDFText(arrayBuffer);
+
+        onProgress?.('Complete!', 100);
+
         resolve({
-          file: { name: file.name, size: file.size, type: file.type },
+          file: {
+            name: file.name,
+            size: file.size,
+            type: file.type
+          },
           pdfInfo,
-          pagesText: ocrText,
-          arrayBuffer,
-          extractionMethod: 'ocr',
-          ocrConfidence: confidence
+          pagesText,
+          arrayBuffer
         });
-        
       } catch (error) {
         reject(new Error(`Failed to process PDF ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`));
       }
