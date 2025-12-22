@@ -631,12 +631,19 @@ export function AddArtifactModal({
         if (docxExportOptions.mode === "rasterize" || docxExportOptions.mode === "both") {
           if (docxExportOptions.selectedRasterPages.size > 0) {
             try {
-              const pages = await rasterizeDocx(docxData.arrayBuffer, { width: 816, scale: 2 });
+              // Get sorted array of selected page indices
+              const selectedIndices = Array.from(docxExportOptions.selectedRasterPages).sort((a, b) => a - b);
               
+              // Only rasterize the selected pages (pass indices to avoid wasting time on unneeded pages)
+              const pages = await rasterizeDocx(docxData.arrayBuffer, { 
+                width: 816, 
+                scale: 2,
+                selectedPages: selectedIndices
+              });
+              
+              // pages array now contains only the selected pages, in the same order as selectedIndices
               for (let i = 0; i < pages.length; i++) {
-                // Only export selected pages
-                if (!docxExportOptions.selectedRasterPages.has(i)) continue;
-                
+                const originalPageIndex = selectedIndices[i]; // Map back to original page number
                 const dataUrl = pages[i];
                 const base64Data = dataUrl.split(",")[1];
 
@@ -645,8 +652,8 @@ export function AddArtifactModal({
                     projectId,
                     shareToken,
                     imageData: base64Data,
-                    fileName: `${docxData.filename.replace(/\.docx?$/i, "")}_page${i + 1}.png`,
-                    content: `Page ${i + 1} of ${docxData.filename}`,
+                    fileName: `${docxData.filename.replace(/\.docx?$/i, "")}_page${originalPageIndex + 1}.png`,
+                    content: `Page ${originalPageIndex + 1} of ${docxData.filename}`,
                     sourceType: "docx-rasterized",
                   },
                 });

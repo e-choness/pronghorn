@@ -315,15 +315,16 @@ export async function processDocxFile(file: File): Promise<DocxData> {
  * Rasterize a DOCX document to page images by rendering HTML content
  * Returns an array of page images, each page is US Letter sized (8.5x11 at 96 DPI = 816x1056)
  * 
- * IMPORTANT: html-to-image cannot capture off-screen elements (left: -9999px produces blank).
- * We use on-screen positioning with z-index layering to keep element visible to the renderer
- * but not visible to the user.
+ * @param arrayBuffer - The DOCX file as an ArrayBuffer
+ * @param options.width - Page width in pixels (default: 816)
+ * @param options.scale - Pixel ratio for higher quality (default: 2)
+ * @param options.selectedPages - Optional array of page indices to rasterize (0-indexed)
  */
 export async function rasterizeDocx(
   arrayBuffer: ArrayBuffer,
-  options: { width?: number; scale?: number } = {}
+  options: { width?: number; scale?: number; selectedPages?: number[] } = {}
 ): Promise<string[]> {
-  const { width = 816, scale = 2 } = options;
+  const { width = 816, scale = 2, selectedPages } = options;
   const PAGE_HEIGHT = 1056; // US Letter at 96 DPI (11 inches)
   
   // First convert to HTML using mammoth
@@ -332,7 +333,8 @@ export async function rasterizeDocx(
   // Dynamically import html-to-image
   const { toPng } = await import("html-to-image");
   
-  // Create an overlay to hide the rendering from the user
+  // Create an OPAQUE overlay to hide the rendering from the user
+  // The viewport renders behind this, technically visible to html-to-image but hidden from user
   const overlay = document.createElement("div");
   overlay.style.cssText = `
     position: fixed;
@@ -340,13 +342,14 @@ export async function rasterizeDocx(
     top: 0;
     right: 0;
     bottom: 0;
-    background: transparent;
-    z-index: 99998;
+    background: white;
+    z-index: 100000;
     pointer-events: none;
   `;
   
   // Create a fixed-size viewport container (this is what we capture)
   // Position it on-screen so html-to-image can render it properly
+  // It sits BEHIND the opaque overlay (lower z-index)
   const viewport = document.createElement("div");
   viewport.style.cssText = `
     position: fixed;
@@ -357,7 +360,7 @@ export async function rasterizeDocx(
     overflow: hidden;
     background: white;
     z-index: 99999;
-    opacity: 0.01;
+    visibility: visible;
   `;
   
   // Create content wrapper that will be positioned for each page
@@ -411,11 +414,13 @@ export async function rasterizeDocx(
     const pageCount = Math.max(1, Math.ceil(contentHeight / PAGE_HEIGHT));
     const pages: string[] = [];
     
-    // Make viewport fully visible for capture (html-to-image needs this)
-    viewport.style.opacity = "1";
+    // Determine which pages to render
+    const pagesToRender = selectedPages 
+      ? selectedPages.filter(p => p >= 0 && p < pageCount).sort((a, b) => a - b)
+      : Array.from({ length: pageCount }, (_, i) => i);
     
     // Capture each page by repositioning the content wrapper
-    for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
+    for (const pageIndex of pagesToRender) {
       // Move content up to show current page in viewport
       contentWrapper.style.top = `-${pageIndex * PAGE_HEIGHT}px`;
       
