@@ -1,17 +1,12 @@
 import React, { useState, useEffect, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { 
   FileText, X, Loader2, Image as ImageIcon, 
@@ -32,6 +27,9 @@ import {
 
 export type { DocxData, DocxExportOptions, DocxExportMode, DocxTextFormat };
 
+// Preview tab now controls export format
+type PreviewTabType = "markdown-raw" | "markdown-preview" | "html" | "text";
+
 interface ArtifactDocxViewerProps {
   docxData: DocxData | null;
   onDocxDataChange: (data: DocxData | null) => void;
@@ -50,24 +48,39 @@ export function ArtifactDocxViewer({
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState("");
   const [parseError, setParseError] = useState<string | null>(null);
-  const [previewTab, setPreviewTab] = useState<"html" | "markdown" | "text">("html");
-  const [rasterizedPreview, setRasterizedPreview] = useState<string | null>(null);
+  const [previewTab, setPreviewTab] = useState<PreviewTabType>("markdown-preview");
+  const [rasterizedPages, setRasterizedPages] = useState<string[]>([]);
   const [isRasterizing, setIsRasterizing] = useState(false);
 
   // Generate rasterized preview when mode changes
   useEffect(() => {
-    if (docxData && (exportOptions.mode === "rasterize" || exportOptions.mode === "both") && !rasterizedPreview) {
+    if (docxData && (exportOptions.mode === "rasterize" || exportOptions.mode === "both") && rasterizedPages.length === 0) {
       generateRasterizedPreview();
     }
   }, [docxData, exportOptions.mode]);
+
+  // Sync previewTab to exportOptions.outputFormat for export
+  useEffect(() => {
+    let outputFormat: DocxTextFormat;
+    if (previewTab === "markdown-raw" || previewTab === "markdown-preview") {
+      outputFormat = "markdown";
+    } else if (previewTab === "html") {
+      outputFormat = "html";
+    } else {
+      outputFormat = "plaintext";
+    }
+    if (exportOptions.outputFormat !== outputFormat) {
+      onExportOptionsChange({ ...exportOptions, outputFormat });
+    }
+  }, [previewTab]);
 
   const generateRasterizedPreview = async () => {
     if (!docxData || isRasterizing) return;
     
     setIsRasterizing(true);
     try {
-      const preview = await rasterizeDocx(docxData.arrayBuffer, { width: 600, scale: 1 });
-      setRasterizedPreview(preview);
+      const pages = await rasterizeDocx(docxData.arrayBuffer, { width: 816, scale: 1 });
+      setRasterizedPages(pages);
     } catch (err) {
       console.error("Failed to generate rasterized preview:", err);
     } finally {
@@ -102,7 +115,7 @@ export function ArtifactDocxViewer({
     setLoadingProgress(0);
     setLoadingMessage("Reading file...");
     setParseError(null);
-    setRasterizedPreview(null);
+    setRasterizedPages([]);
 
     try {
       setLoadingProgress(20);
@@ -134,7 +147,7 @@ export function ArtifactDocxViewer({
 
   const removeFile = () => {
     onDocxDataChange(null);
-    setRasterizedPreview(null);
+    setRasterizedPages([]);
     onExportOptionsChange({
       mode: "text",
       outputFormat: "markdown",
@@ -177,7 +190,7 @@ export function ArtifactDocxViewer({
       count += 1; // Text content (merged)
     }
     if (exportOptions.mode === "rasterize" || exportOptions.mode === "both") {
-      count += 1; // Rasterized image
+      count += Math.max(1, rasterizedPages.length); // One image per page
     }
     if (exportOptions.extractImages) {
       count += exportOptions.selectedImages.size;
@@ -282,26 +295,6 @@ export function ArtifactDocxViewer({
             </RadioGroup>
           </div>
 
-          {/* Text Format (only for text/both modes) */}
-          {(exportOptions.mode === "text" || exportOptions.mode === "both") && (
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Text Format</Label>
-              <Select
-                value={exportOptions.outputFormat}
-                onValueChange={(v) => onExportOptionsChange({ ...exportOptions, outputFormat: v as DocxTextFormat })}
-              >
-                <SelectTrigger className="h-8 w-32 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="markdown">Markdown</SelectItem>
-                  <SelectItem value="html">HTML</SelectItem>
-                  <SelectItem value="plaintext">Plain Text</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
           {/* Extract Images Checkbox */}
           {imageCount > 0 && (
             <div className="flex items-center space-x-2">
@@ -329,14 +322,22 @@ export function ArtifactDocxViewer({
               <div className="flex items-center gap-2">
                 <FileDown className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium">Text Preview</span>
-                <div className="flex gap-1 ml-auto">
+                <div className="flex gap-1 ml-auto flex-wrap">
                   <Button
-                    variant={previewTab === "markdown" ? "secondary" : "ghost"}
+                    variant={previewTab === "markdown-raw" ? "secondary" : "ghost"}
                     size="sm"
                     className="h-6 px-2 text-xs"
-                    onClick={() => setPreviewTab("markdown")}
+                    onClick={() => setPreviewTab("markdown-raw")}
                   >
-                    Markdown
+                    Markdown Raw
+                  </Button>
+                  <Button
+                    variant={previewTab === "markdown-preview" ? "secondary" : "ghost"}
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => setPreviewTab("markdown-preview")}
+                  >
+                    Markdown Preview
                   </Button>
                   <Button
                     variant={previewTab === "html" ? "secondary" : "ghost"}
@@ -356,14 +357,20 @@ export function ArtifactDocxViewer({
                   </Button>
                 </div>
               </div>
-              <div className="border rounded-lg p-3 bg-background max-h-60 overflow-auto">
-                <pre className="text-xs font-mono whitespace-pre-wrap break-words">
-                  {previewTab === "markdown" && docxData.markdownContent.slice(0, 2000)}
-                  {previewTab === "html" && docxData.htmlContent.slice(0, 2000)}
-                  {previewTab === "text" && docxData.rawText.slice(0, 2000)}
-                  {(previewTab === "markdown" ? docxData.markdownContent : 
-                    previewTab === "html" ? docxData.htmlContent : docxData.rawText).length > 2000 && "..."}
-                </pre>
+              <div className="border rounded-lg p-3 bg-background">
+                {previewTab === "markdown-preview" ? (
+                  <div className="prose prose-sm dark:prose-invert max-w-none">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {docxData.markdownContent}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  <pre className="text-xs font-mono whitespace-pre-wrap break-words">
+                    {previewTab === "markdown-raw" && docxData.markdownContent}
+                    {previewTab === "html" && docxData.htmlContent}
+                    {previewTab === "text" && docxData.rawText}
+                  </pre>
+                )}
               </div>
             </div>
           )}
@@ -373,7 +380,9 @@ export function ArtifactDocxViewer({
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">Rasterized Preview</span>
+                <span className="text-sm font-medium">
+                  Rasterized Pages {rasterizedPages.length > 0 && `(${rasterizedPages.length})`}
+                </span>
               </div>
               <div className="border rounded-lg p-2 bg-background">
                 {isRasterizing ? (
@@ -381,12 +390,21 @@ export function ArtifactDocxViewer({
                     <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                     <span className="text-sm text-muted-foreground">Generating preview...</span>
                   </div>
-                ) : rasterizedPreview ? (
-                  <img
-                    src={rasterizedPreview}
-                    alt="Document preview"
-                    className="w-full max-h-80 object-contain rounded"
-                  />
+                ) : rasterizedPages.length > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                    {rasterizedPages.map((page, index) => (
+                      <div key={index} className="relative border rounded overflow-hidden bg-white">
+                        <img
+                          src={page}
+                          alt={`Page ${index + 1}`}
+                          className="w-full h-auto object-contain"
+                        />
+                        <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-1 py-0.5">
+                          <p className="text-[10px] text-white text-center">Page {index + 1}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 ) : (
                   <div className="flex items-center justify-center h-40">
                     <Button variant="outline" size="sm" onClick={generateRasterizedPreview}>
@@ -445,6 +463,7 @@ export function ArtifactDocxViewer({
                         src={`data:${img.mimeType};base64,${img.base64}`}
                         alt={img.filename}
                         className="w-full h-full object-cover"
+                        style={{ imageOrientation: "from-image" }}
                       />
                       <div
                         className={cn(

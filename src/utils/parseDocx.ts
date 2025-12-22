@@ -310,14 +310,15 @@ export async function processDocxFile(file: File): Promise<DocxData> {
 }
 
 /**
- * Rasterize a DOCX document to an image by rendering HTML content
- * Uses the converted HTML from mammoth instead of docx-preview
+ * Rasterize a DOCX document to page images by rendering HTML content
+ * Returns an array of page images, each page is US Letter sized (8.5x11 at 96 DPI = 816x1056)
  */
 export async function rasterizeDocx(
   arrayBuffer: ArrayBuffer,
   options: { width?: number; scale?: number } = {}
-): Promise<string> {
-  const { width = 800, scale = 2 } = options;
+): Promise<string[]> {
+  const { width = 816, scale = 2 } = options;
+  const PAGE_HEIGHT = 1056; // US Letter at 96 DPI (11 inches)
   
   // First convert to HTML using mammoth
   const htmlContent = await convertToHtml(arrayBuffer);
@@ -334,27 +335,31 @@ export async function rasterizeDocx(
     width: ${width}px;
     background: white;
     font-family: 'Times New Roman', Georgia, serif;
-    padding: 40px;
+    padding: 60px 72px;
     box-sizing: border-box;
     line-height: 1.6;
     color: #000;
+    font-size: 12pt;
   `;
   
   // Add styles for the HTML content
   container.innerHTML = `
     <style>
-      h1, h2, h3, h4, h5, h6 { margin: 1em 0 0.5em; font-weight: bold; }
-      h1 { font-size: 2em; }
-      h2 { font-size: 1.5em; }
-      h3 { font-size: 1.25em; }
+      h1, h2, h3, h4, h5, h6 { margin: 1em 0 0.5em; font-weight: bold; color: #000; }
+      h1 { font-size: 24pt; }
+      h2 { font-size: 18pt; }
+      h3 { font-size: 14pt; }
+      h4 { font-size: 12pt; }
       p { margin: 0.5em 0; }
       ul, ol { margin: 0.5em 0; padding-left: 2em; }
+      li { margin: 0.25em 0; }
       table { border-collapse: collapse; margin: 1em 0; width: 100%; }
-      td, th { border: 1px solid #ccc; padding: 8px; text-align: left; }
-      th { background: #f5f5f5; font-weight: bold; }
+      td, th { border: 1px solid #000; padding: 8px; text-align: left; }
+      th { background: #f0f0f0; font-weight: bold; }
       strong, b { font-weight: bold; }
       em, i { font-style: italic; }
       img { max-width: 100%; height: auto; }
+      a { color: #0000EE; text-decoration: underline; }
     </style>
     ${htmlContent}
   `;
@@ -365,13 +370,48 @@ export async function rasterizeDocx(
     // Wait for any images to load
     await new Promise(resolve => setTimeout(resolve, 300));
     
-    // Capture as PNG
-    const dataUrl = await toPng(container, {
-      pixelRatio: scale,
-      backgroundColor: "#ffffff",
-    });
+    // Get the total content height
+    const contentHeight = container.scrollHeight;
+    const pageCount = Math.max(1, Math.ceil(contentHeight / PAGE_HEIGHT));
+    const pages: string[] = [];
     
-    return dataUrl;
+    // Capture each page
+    for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
+      // Create a wrapper that clips to the current page
+      const pageWrapper = document.createElement("div");
+      pageWrapper.style.cssText = `
+        position: fixed;
+        left: -9999px;
+        top: 0;
+        width: ${width}px;
+        height: ${PAGE_HEIGHT}px;
+        overflow: hidden;
+        background: white;
+      `;
+      
+      // Clone the container and offset it
+      const clone = container.cloneNode(true) as HTMLElement;
+      clone.style.position = "absolute";
+      clone.style.left = "0";
+      clone.style.top = `-${pageIndex * PAGE_HEIGHT}px`;
+      
+      pageWrapper.appendChild(clone);
+      document.body.appendChild(pageWrapper);
+      
+      try {
+        const dataUrl = await toPng(pageWrapper, {
+          pixelRatio: scale,
+          backgroundColor: "#ffffff",
+          width: width,
+          height: PAGE_HEIGHT,
+        });
+        pages.push(dataUrl);
+      } finally {
+        document.body.removeChild(pageWrapper);
+      }
+    }
+    
+    return pages;
   } finally {
     // Clean up
     document.body.removeChild(container);

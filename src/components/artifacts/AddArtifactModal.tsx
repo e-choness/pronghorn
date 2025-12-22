@@ -170,6 +170,9 @@ export function AddArtifactModal({
 
   const pdfCount = getPdfCount();
 
+  // DOCX rasterized pages state (for counting)
+  const [docxRasterizedPageCount, setDocxRasterizedPageCount] = useState(0);
+
   // Calculate DOCX artifact count
   const getDocxCount = useCallback(() => {
     if (!docxData) return 0;
@@ -178,13 +181,13 @@ export function AddArtifactModal({
       count += 1;
     }
     if (docxExportOptions.mode === "rasterize" || docxExportOptions.mode === "both") {
-      count += 1;
+      count += Math.max(1, docxRasterizedPageCount);
     }
     if (docxExportOptions.extractImages) {
       count += docxExportOptions.selectedImages.size;
     }
     return count;
-  }, [docxData, docxExportOptions]);
+  }, [docxData, docxExportOptions, docxRasterizedPageCount]);
 
   const docxCount = getDocxCount();
 
@@ -625,26 +628,30 @@ export function AddArtifactModal({
           }
         }
 
-        // Rasterize document
+        // Rasterize document (now returns array of pages)
         if (docxExportOptions.mode === "rasterize" || docxExportOptions.mode === "both") {
           try {
-            const dataUrl = await rasterizeDocx(docxData.arrayBuffer, { width: 800, scale: 2 });
-            const base64Data = dataUrl.split(",")[1];
+            const pages = await rasterizeDocx(docxData.arrayBuffer, { width: 816, scale: 2 });
+            
+            for (let i = 0; i < pages.length; i++) {
+              const dataUrl = pages[i];
+              const base64Data = dataUrl.split(",")[1];
 
-            const { data, error } = await supabase.functions.invoke("upload-artifact-image", {
-              body: {
-                projectId,
-                shareToken,
-                imageData: base64Data,
-                fileName: `${docxData.filename.replace(/\.docx?$/i, "")}_rasterized.png`,
-                content: `Rasterized document: ${docxData.filename}`,
-                sourceType: "docx-rasterized",
-              },
-            });
+              const { data, error } = await supabase.functions.invoke("upload-artifact-image", {
+                body: {
+                  projectId,
+                  shareToken,
+                  imageData: base64Data,
+                  fileName: `${docxData.filename.replace(/\.docx?$/i, "")}_page${i + 1}.png`,
+                  content: `Page ${i + 1} of ${docxData.filename}`,
+                  sourceType: "docx-rasterized",
+                },
+              });
 
-            if (error) throw error;
-            broadcastRefresh("insert", data?.artifact?.id);
-            successCount++;
+              if (error) throw error;
+              broadcastRefresh("insert", data?.artifact?.id);
+              successCount++;
+            }
           } catch (err) {
             console.error("Failed to rasterize DOCX:", err);
             errorCount++;
