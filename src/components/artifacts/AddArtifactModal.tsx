@@ -94,6 +94,8 @@ export function AddArtifactModal({
     outputFormat: "markdown",
     extractImages: true,
     selectedImages: new Set(),
+    selectedRasterPages: new Set(),
+    rasterizedPageCount: 0,
   });
 
   // PDF state
@@ -170,9 +172,6 @@ export function AddArtifactModal({
 
   const pdfCount = getPdfCount();
 
-  // DOCX rasterized pages state (for counting)
-  const [docxRasterizedPageCount, setDocxRasterizedPageCount] = useState(0);
-
   // Calculate DOCX artifact count
   const getDocxCount = useCallback(() => {
     if (!docxData) return 0;
@@ -181,13 +180,13 @@ export function AddArtifactModal({
       count += 1;
     }
     if (docxExportOptions.mode === "rasterize" || docxExportOptions.mode === "both") {
-      count += Math.max(1, docxRasterizedPageCount);
+      count += docxExportOptions.selectedRasterPages.size;
     }
     if (docxExportOptions.extractImages) {
       count += docxExportOptions.selectedImages.size;
     }
     return count;
-  }, [docxData, docxExportOptions, docxRasterizedPageCount]);
+  }, [docxData, docxExportOptions]);
 
   const docxCount = getDocxCount();
 
@@ -628,33 +627,38 @@ export function AddArtifactModal({
           }
         }
 
-        // Rasterize document (now returns array of pages)
+        // Rasterize document (only selected pages)
         if (docxExportOptions.mode === "rasterize" || docxExportOptions.mode === "both") {
-          try {
-            const pages = await rasterizeDocx(docxData.arrayBuffer, { width: 816, scale: 2 });
-            
-            for (let i = 0; i < pages.length; i++) {
-              const dataUrl = pages[i];
-              const base64Data = dataUrl.split(",")[1];
+          if (docxExportOptions.selectedRasterPages.size > 0) {
+            try {
+              const pages = await rasterizeDocx(docxData.arrayBuffer, { width: 816, scale: 2 });
+              
+              for (let i = 0; i < pages.length; i++) {
+                // Only export selected pages
+                if (!docxExportOptions.selectedRasterPages.has(i)) continue;
+                
+                const dataUrl = pages[i];
+                const base64Data = dataUrl.split(",")[1];
 
-              const { data, error } = await supabase.functions.invoke("upload-artifact-image", {
-                body: {
-                  projectId,
-                  shareToken,
-                  imageData: base64Data,
-                  fileName: `${docxData.filename.replace(/\.docx?$/i, "")}_page${i + 1}.png`,
-                  content: `Page ${i + 1} of ${docxData.filename}`,
-                  sourceType: "docx-rasterized",
-                },
-              });
+                const { data, error } = await supabase.functions.invoke("upload-artifact-image", {
+                  body: {
+                    projectId,
+                    shareToken,
+                    imageData: base64Data,
+                    fileName: `${docxData.filename.replace(/\.docx?$/i, "")}_page${i + 1}.png`,
+                    content: `Page ${i + 1} of ${docxData.filename}`,
+                    sourceType: "docx-rasterized",
+                  },
+                });
 
-              if (error) throw error;
-              broadcastRefresh("insert", data?.artifact?.id);
-              successCount++;
+                if (error) throw error;
+                broadcastRefresh("insert", data?.artifact?.id);
+                successCount++;
+              }
+            } catch (err) {
+              console.error("Failed to rasterize DOCX:", err);
+              errorCount++;
             }
-          } catch (err) {
-            console.error("Failed to rasterize DOCX:", err);
-            errorCount++;
           }
         }
 
@@ -723,6 +727,8 @@ export function AddArtifactModal({
       outputFormat: "markdown",
       extractImages: true,
       selectedImages: new Set(),
+      selectedRasterPages: new Set(),
+      rasterizedPageCount: 0,
     });
     setPdfData(null);
     setPdfExportOptions({
