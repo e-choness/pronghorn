@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -27,13 +27,15 @@ import { ArtifactTextFileList, TextFile } from "./ArtifactTextFileList";
 import { ArtifactExcelViewer } from "./ArtifactExcelViewer";
 import { ArtifactDocxPlaceholder } from "./ArtifactDocxPlaceholder";
 import { ArtifactPdfPlaceholder } from "./ArtifactPdfPlaceholder";
-import { ArtifactPptxPlaceholder } from "./ArtifactPptxPlaceholder";
+import { ArtifactPptxViewer, PptxExportOptions } from "./ArtifactPptxViewer";
 import { ArtifactUniversalUpload } from "./ArtifactUniversalUpload";
 import { ExcelData, formatExcelDataAsJson, parseExcelFile } from "@/utils/parseExcel";
+import { PptxData, getAllText, getTextPerSlide } from "@/utils/parsePptx";
+import { rasterizeSlide } from "@/utils/renderPptxSlide";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-type TabType = "manual" | "upload" | "images" | "excel" | "text" | "docx" | "pdf" | "pptx";
+type TabType = "manual" | "upload" | "images" | "excel" | "text" | "pptx" | "docx" | "pdf";
 
 interface AddArtifactModalProps {
   open: boolean;
@@ -73,10 +75,18 @@ export function AddArtifactModal({
   // Manual entry state
   const [manualContent, setManualContent] = useState("");
 
-  // Phase 2 file states
+  // PPTX state
+  const [pptxData, setPptxData] = useState<PptxData | null>(null);
+  const [pptxExportOptions, setPptxExportOptions] = useState<PptxExportOptions>({
+    mode: "text",
+    mergeText: true,
+    extractImages: true,
+    selectedSlides: new Set(),
+  });
+
+  // Phase 2 file states (coming soon)
   const [docxFiles, setDocxFiles] = useState<File[]>([]);
   const [pdfFiles, setPdfFiles] = useState<File[]>([]);
-  const [pptxFiles, setPptxFiles] = useState<File[]>([]);
 
   // Auto-collapse sidebar on small screens
   useEffect(() => {
@@ -101,6 +111,33 @@ export function AddArtifactModal({
   const selectedTextFilesCount = textFiles.filter(f => f.selected).length;
   const excelRowsCount = Array.from(excelSelectedRows.values()).reduce((sum, set) => sum + set.size, 0);
 
+  // Calculate PPTX artifact count
+  const getPptxCount = useCallback(() => {
+    if (!pptxData || pptxExportOptions.selectedSlides.size === 0) return 0;
+
+    let count = 0;
+    const selectedCount = pptxExportOptions.selectedSlides.size;
+
+    if (pptxExportOptions.mode === "text" || pptxExportOptions.mode === "both") {
+      count += pptxExportOptions.mergeText ? 1 : selectedCount;
+    }
+    if (pptxExportOptions.mode === "rasterize" || pptxExportOptions.mode === "both") {
+      count += selectedCount;
+    }
+    if (pptxExportOptions.extractImages) {
+      const imageIds = new Set<string>();
+      for (const idx of pptxExportOptions.selectedSlides) {
+        const slide = pptxData.slides[idx];
+        slide?.images.forEach((img) => imageIds.add(img.id));
+      }
+      count += imageIds.size;
+    }
+
+    return count;
+  }, [pptxData, pptxExportOptions]);
+
+  const pptxCount = getPptxCount();
+
   const getTotalCount = () => {
     let count = 0;
     count += selectedImagesCount;
@@ -110,7 +147,8 @@ export function AddArtifactModal({
       count += excelMergeAsOne ? 1 : excelRowsCount;
     }
     if (manualContent.trim()) count += 1;
-    // Phase 2 files not yet processable
+    // PPTX count
+    count += pptxCount;
     return count;
   };
 
@@ -122,9 +160,9 @@ export function AddArtifactModal({
     { id: "images", label: "Images", icon: <Image className="h-4 w-4" />, count: selectedImagesCount },
     { id: "excel", label: "Excel", icon: <FileSpreadsheet className="h-4 w-4" />, count: excelRowsCount > 0 ? (excelMergeAsOne ? 1 : excelRowsCount) : 0 },
     { id: "text", label: "Text Files", icon: <FileText className="h-4 w-4" />, count: selectedTextFilesCount },
+    { id: "pptx", label: "PowerPoint", icon: <Presentation className="h-4 w-4" />, count: pptxCount },
     { id: "docx", label: "Word", icon: <FileText className="h-4 w-4" />, count: docxFiles.length },
     { id: "pdf", label: "PDF", icon: <FileIcon className="h-4 w-4" />, count: pdfFiles.length },
-    { id: "pptx", label: "PowerPoint", icon: <Presentation className="h-4 w-4" />, count: pptxFiles.length },
   ];
 
   // Handlers for universal upload
@@ -170,7 +208,11 @@ export function AddArtifactModal({
   };
 
   const handleUniversalPptxAdded = (files: File[]) => {
-    setPptxFiles(prev => [...prev, ...files]);
+    // Note: PPTX files are now handled by the viewer component
+    // This handler is kept for the universal upload to switch tabs
+    if (files.length > 0) {
+      setActiveTab("pptx");
+    }
   };
 
   const handleCreateArtifacts = async () => {
@@ -281,6 +323,121 @@ export function AddArtifactModal({
         }
       }
 
+      // Create PPTX artifacts
+      if (pptxData && pptxExportOptions.selectedSlides.size > 0) {
+        const selectedSlides = Array.from(pptxExportOptions.selectedSlides)
+          .sort((a, b) => a - b)
+          .map((idx) => pptxData.slides[idx])
+          .filter(Boolean);
+
+        // Text extraction
+        if (pptxExportOptions.mode === "text" || pptxExportOptions.mode === "both") {
+          if (pptxExportOptions.mergeText) {
+            // Single merged text artifact
+            try {
+              const mergedText = selectedSlides
+                .map((slide, i) => {
+                  const slideHeader = `--- Slide ${slide.index + 1}${slide.title ? `: ${slide.title}` : ""} ---`;
+                  return `${slideHeader}\n${slide.mergedText}`;
+                })
+                .join("\n\n");
+              await addArtifact(mergedText, "pptx-text");
+              successCount++;
+            } catch (err) {
+              console.error("Failed to create merged PPTX text artifact:", err);
+              errorCount++;
+            }
+          } else {
+            // Separate text artifact per slide
+            for (const slide of selectedSlides) {
+              try {
+                const slideContent = `# Slide ${slide.index + 1}${slide.title ? `: ${slide.title}` : ""}\n\n${slide.mergedText}`;
+                await addArtifact(slideContent, "pptx-slide-text");
+                successCount++;
+              } catch (err) {
+                console.error(`Failed to create text artifact for slide ${slide.index + 1}:`, err);
+                errorCount++;
+              }
+            }
+          }
+        }
+
+        // Rasterize slides
+        if (pptxExportOptions.mode === "rasterize" || pptxExportOptions.mode === "both") {
+          for (const slide of selectedSlides) {
+            try {
+              const blob = await rasterizeSlide(slide, pptxData.media, {
+                width: 1920,
+                height: 1080,
+                pixelRatio: 1,
+              });
+
+              // Convert blob to base64
+              const reader = new FileReader();
+              const base64 = await new Promise<string>((resolve, reject) => {
+                reader.onload = () => {
+                  const result = reader.result as string;
+                  const base64Data = result.split(",")[1];
+                  resolve(base64Data);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+              });
+
+              const { data, error } = await supabase.functions.invoke("upload-artifact-image", {
+                body: {
+                  projectId,
+                  shareToken,
+                  imageData: base64,
+                  fileName: `${pptxData.filename.replace(/\.pptx?$/i, "")}_slide${slide.index + 1}.png`,
+                  content: `Slide ${slide.index + 1}${slide.title ? `: ${slide.title}` : ""}\n\n${slide.mergedText}`,
+                  sourceType: "pptx-rasterized",
+                },
+              });
+
+              if (error) throw error;
+              broadcastRefresh("insert", data?.artifact?.id);
+              successCount++;
+            } catch (err) {
+              console.error(`Failed to rasterize slide ${slide.index + 1}:`, err);
+              errorCount++;
+            }
+          }
+        }
+
+        // Extract embedded images
+        if (pptxExportOptions.extractImages) {
+          const processedImages = new Set<string>();
+
+          for (const slide of selectedSlides) {
+            for (const img of slide.images) {
+              if (processedImages.has(img.id)) continue;
+              processedImages.add(img.id);
+
+              try {
+                const { data, error } = await supabase.functions.invoke("upload-artifact-image", {
+                  body: {
+                    projectId,
+                    shareToken,
+                    imageData: img.base64,
+                    fileName: img.filename,
+                    content: `Embedded image from ${pptxData.filename}: ${img.filename}`,
+                    sourceType: "pptx-image",
+                  },
+                });
+
+                if (error) throw error;
+                broadcastRefresh("insert", data?.artifact?.id);
+                successCount++;
+              } catch (err) {
+                console.error(`Failed to create artifact for image ${img.filename}:`, err);
+                errorCount++;
+              }
+            }
+          }
+        }
+      }
+
       if (successCount > 0) {
         toast.success(`Created ${successCount} artifact${successCount !== 1 ? 's' : ''}`);
         onArtifactsCreated();
@@ -303,9 +460,15 @@ export function AddArtifactModal({
     setExcelMergeAsOne(true);
     setTextFiles([]);
     setManualContent("");
+    setPptxData(null);
+    setPptxExportOptions({
+      mode: "text",
+      mergeText: true,
+      extractImages: true,
+      selectedSlides: new Set(),
+    });
     setDocxFiles([]);
     setPdfFiles([]);
-    setPptxFiles([]);
     setActiveTab("manual");
   };
 
@@ -404,7 +567,8 @@ export function AddArtifactModal({
 
               <ScrollArea className="flex-1">
                 <div className="p-1.5 space-y-0.5">
-                  {tabs.slice(0, 5).map(tab => renderSidebarButton(tab))}
+                  {/* Active tabs (first 6 including PPTX) */}
+                  {tabs.slice(0, 6).map(tab => renderSidebarButton(tab))}
 
                   <Separator className="my-1.5" />
                   
@@ -414,7 +578,8 @@ export function AddArtifactModal({
                     </div>
                   )}
 
-                  {tabs.slice(5).map(tab => renderSidebarButton(tab, true))}
+                  {/* Coming soon tabs (Word, PDF) */}
+                  {tabs.slice(6).map(tab => renderSidebarButton(tab, true))}
                 </div>
               </ScrollArea>
             </div>
@@ -450,7 +615,7 @@ export function AddArtifactModal({
                       textFiles: textFiles.length,
                       docx: docxFiles.length,
                       pdf: pdfFiles.length,
-                      pptx: pptxFiles.length,
+                      pptx: pptxData ? 1 : 0,
                     }}
                   />
                 )}
@@ -476,6 +641,14 @@ export function AddArtifactModal({
                     onFilesChange={setTextFiles}
                   />
                 )}
+                {activeTab === "pptx" && (
+                  <ArtifactPptxViewer
+                    pptxData={pptxData}
+                    onPptxDataChange={setPptxData}
+                    exportOptions={pptxExportOptions}
+                    onExportOptionsChange={setPptxExportOptions}
+                  />
+                )}
                 {activeTab === "docx" && (
                   <ArtifactDocxPlaceholder
                     files={docxFiles}
@@ -486,12 +659,6 @@ export function AddArtifactModal({
                   <ArtifactPdfPlaceholder
                     files={pdfFiles}
                     onFilesChange={setPdfFiles}
-                  />
-                )}
-                {activeTab === "pptx" && (
-                  <ArtifactPptxPlaceholder
-                    files={pptxFiles}
-                    onFilesChange={setPptxFiles}
                   />
                 )}
               </div>
@@ -506,12 +673,14 @@ export function AddArtifactModal({
                       <span className="hidden sm:inline">
                         Ready: {" "}
                         {selectedImagesCount > 0 && `${selectedImagesCount} image${selectedImagesCount !== 1 ? 's' : ''}`}
-                        {selectedImagesCount > 0 && (excelRowsCount > 0 || selectedTextFilesCount > 0 || manualContent.trim()) && ", "}
+                        {selectedImagesCount > 0 && (excelRowsCount > 0 || selectedTextFilesCount > 0 || manualContent.trim() || pptxCount > 0) && ", "}
                         {excelRowsCount > 0 && (excelMergeAsOne ? `1 excel` : `${excelRowsCount} rows`)}
-                        {excelRowsCount > 0 && (selectedTextFilesCount > 0 || manualContent.trim()) && ", "}
+                        {excelRowsCount > 0 && (selectedTextFilesCount > 0 || manualContent.trim() || pptxCount > 0) && ", "}
                         {selectedTextFilesCount > 0 && `${selectedTextFilesCount} text`}
-                        {selectedTextFilesCount > 0 && manualContent.trim() && ", "}
+                        {selectedTextFilesCount > 0 && (manualContent.trim() || pptxCount > 0) && ", "}
                         {manualContent.trim() && "1 manual"}
+                        {manualContent.trim() && pptxCount > 0 && ", "}
+                        {pptxCount > 0 && `${pptxCount} pptx`}
                       </span>
                     )}
                     <span className="sm:hidden">
