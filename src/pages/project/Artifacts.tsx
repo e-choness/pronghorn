@@ -514,14 +514,14 @@ ${artifact.content}`;
                   {filteredAndSortedArtifacts.map((artifact) => (
                     <Card key={artifact.id}>
                       <CardHeader>
-                        <div className="flex items-start justify-between">
-                          <div className="space-y-1 flex-1">
-                            <div className="flex items-center gap-2">
-                              <CardTitle className="text-lg">
+                        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                          <div className="space-y-1 flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <CardTitle className="text-lg break-words">
                                 {artifact.ai_title || "Untitled Artifact"}
                               </CardTitle>
                               {artifact.provenance_page && artifact.provenance_total_pages && (
-                                <Badge variant="secondary" className="text-xs">
+                                <Badge variant="secondary" className="text-xs shrink-0">
                                   Page {artifact.provenance_page}/{artifact.provenance_total_pages}
                                 </Badge>
                               )}
@@ -535,7 +535,7 @@ ${artifact.content}`;
                               )}
                             </p>
                           </div>
-                          <div className="flex gap-2">
+                          <div className="flex flex-wrap gap-1 shrink-0">
                             <TooltipProvider>
                               {artifact.provenance_id && (
                                 <Tooltip>
