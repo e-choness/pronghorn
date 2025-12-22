@@ -12,6 +12,7 @@ import { MarkdownProcessor } from "@/utils/markdownProcessor";
 interface ArtifactDownloadDropdownProps {
   title: string;
   content: string;
+  aiSummary?: string | null;
   variant?: "ghost" | "outline" | "default";
   size?: "icon" | "sm" | "default";
   iconOnly?: boolean;
@@ -20,6 +21,7 @@ interface ArtifactDownloadDropdownProps {
 export function ArtifactDownloadDropdown({
   title,
   content,
+  aiSummary,
   variant = "ghost",
   size = "icon",
   iconOnly = true,
@@ -35,7 +37,13 @@ export function ArtifactDownloadDropdown({
   const handleDownloadWord = async () => {
     try {
       const processor = new MarkdownProcessor();
-      const sections = [{ title: "Content", value: content }];
+      const sections: Array<{ title: string; value: string }> = [];
+      
+      if (aiSummary) {
+        sections.push({ title: "Summary", value: aiSummary });
+      }
+      sections.push({ title: "Content", value: content });
+      
       const blob = await processor.generateWordDocument(title, sections);
       
       const url = URL.createObjectURL(blob);
@@ -56,7 +64,12 @@ export function ArtifactDownloadDropdown({
 
   const handleDownloadMarkdown = () => {
     try {
-      const markdownContent = `# ${title}\n\n${content}`;
+      let markdownContent = `# ${title}\n\n`;
+      if (aiSummary) {
+        markdownContent += `## Summary\n\n${aiSummary}\n\n`;
+      }
+      markdownContent += `## Content\n\n${content}`;
+      
       const blob = new Blob([markdownContent], { type: "text/markdown" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -76,7 +89,11 @@ export function ArtifactDownloadDropdown({
 
   const handleDownloadJson = () => {
     try {
-      const jsonContent = JSON.stringify({ title, content }, null, 2);
+      const jsonData: Record<string, string> = { title, content };
+      if (aiSummary) {
+        jsonData.ai_summary = aiSummary;
+      }
+      const jsonContent = JSON.stringify(jsonData, null, 2);
       const blob = new Blob([jsonContent], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
