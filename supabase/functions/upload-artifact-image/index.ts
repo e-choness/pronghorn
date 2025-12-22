@@ -50,8 +50,14 @@ serve(async (req) => {
       const base64Data = imageData.split(',')[1] || imageData;
       const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
       
-      // Upload to storage
-      const storagePath = `${projectId}/${fileName || `${Date.now()}.png`}`;
+      // Generate a unique filename with timestamp + random suffix to prevent conflicts
+      const uniqueId = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+      const baseName = fileName ? fileName.replace(/\.[^.]+$/, '') : 'image';
+      const extension = fileName?.split('.').pop() || 'png';
+      const uniqueFileName = `${baseName}-${uniqueId}.${extension}`;
+      
+      // Upload to storage with unique filename
+      const storagePath = `${projectId}/${uniqueFileName}`;
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('artifact-images')
         .upload(storagePath, binaryData, {
