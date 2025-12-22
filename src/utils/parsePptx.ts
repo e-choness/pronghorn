@@ -281,6 +281,7 @@ interface PlaceholderStyle {
   height: number;
   fontSize?: number;      // in points
   fontColor?: string;     // resolved hex color
+  fontFamily?: string;    // font typeface from latin element
   alignment?: 'left' | 'center' | 'right' | 'justify';
   verticalAlign?: 'top' | 'middle' | 'bottom';
 }
@@ -439,6 +440,7 @@ async function parseLayoutPlaceholderStyles(
       const txBody = sp.getElementsByTagNameNS(NS.p, "txBody")[0];
       let fontSize: number | undefined;
       let fontColor: string | undefined;
+      let fontFamily: string | undefined;
       let alignment: 'left' | 'center' | 'right' | 'justify' | undefined;
       let verticalAlign: 'top' | 'middle' | 'bottom' | undefined;
       
@@ -465,6 +467,12 @@ async function parseLayoutPlaceholderStyles(
               // Font color from solidFill
               const solidFill = defRPr.getElementsByTagNameNS(NS.a, "solidFill")[0];
               fontColor = parseColor(solidFill);
+              
+              // Font family from latin element
+              const latin = defRPr.getElementsByTagNameNS(NS.a, "latin")[0];
+              if (latin) {
+                fontFamily = latin.getAttribute("typeface") || undefined;
+              }
             }
           }
         }
@@ -487,11 +495,12 @@ async function parseLayoutPlaceholderStyles(
         height: transform?.height ?? 100,
         fontSize,
         fontColor,
+        fontFamily,
         alignment,
         verticalAlign,
       });
       
-      console.log(`[PPTX Parser] Layout placeholder '${phType}': fontColor=${fontColor}, fontSize=${fontSize}, pos=(${transform?.x}, ${transform?.y})`);
+      console.log(`[PPTX Parser] Layout placeholder '${phType}': fontColor=${fontColor}, fontSize=${fontSize}, fontFamily=${fontFamily}, pos=(${transform?.x}, ${transform?.y})`);
     }
   } catch (error) {
     console.warn(`Failed to parse layout placeholder styles from ${layoutPath}:`, error);
@@ -1102,15 +1111,18 @@ function extractShapesFromXml(
       }
     }
     
-    // Also apply inherited styles to paragraph runs that don't have explicit colors
-    if (paragraphs.length > 0 && layoutStyle?.fontColor) {
+    // Also apply inherited styles to paragraph runs that don't have explicit values
+    if (paragraphs.length > 0 && layoutStyle) {
       for (const para of paragraphs) {
         for (const run of para.runs) {
-          if (!run.fontColor) {
+          if (!run.fontColor && layoutStyle.fontColor) {
             run.fontColor = layoutStyle.fontColor;
           }
           if (!run.fontSize && layoutStyle.fontSize) {
             run.fontSize = layoutStyle.fontSize;
+          }
+          if (!run.fontFamily && layoutStyle.fontFamily) {
+            run.fontFamily = layoutStyle.fontFamily;
           }
         }
       }
