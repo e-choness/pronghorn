@@ -421,6 +421,7 @@ ${artifact.content}`;
                                   <ArtifactDownloadDropdown
                                     title={artifact.ai_title || "Artifact"}
                                     content={artifact.content}
+                                    aiSummary={artifact.ai_summary}
                                   />
                                 </TooltipTrigger>
                                 <TooltipContent>Download</TooltipContent>
@@ -557,6 +558,7 @@ ${artifact.content}`;
                                     <ArtifactDownloadDropdown
                                       title={artifact.ai_title || "Artifact"}
                                       content={artifact.content}
+                                      aiSummary={artifact.ai_summary}
                                     />
                                   </TooltipTrigger>
                                   <TooltipContent>Download</TooltipContent>
