@@ -59,6 +59,28 @@ export function ArtifactDocxViewer({
     }
   }, [docxData, exportOptions.mode]);
 
+  // Page selection helpers using exportOptions
+  const toggleRasterPageSelection = (pageIndex: number) => {
+    const newSet = new Set(exportOptions.selectedRasterPages);
+    if (newSet.has(pageIndex)) {
+      newSet.delete(pageIndex);
+    } else {
+      newSet.add(pageIndex);
+    }
+    onExportOptionsChange({ ...exportOptions, selectedRasterPages: newSet });
+  };
+
+  const selectAllRasterPages = () => {
+    onExportOptionsChange({
+      ...exportOptions,
+      selectedRasterPages: new Set(rasterizedPages.map((_, i) => i)),
+    });
+  };
+
+  const deselectAllRasterPages = () => {
+    onExportOptionsChange({ ...exportOptions, selectedRasterPages: new Set() });
+  };
+
   // Sync previewTab to exportOptions.outputFormat for export
   useEffect(() => {
     let outputFormat: DocxTextFormat;
@@ -81,6 +103,12 @@ export function ArtifactDocxViewer({
     try {
       const pages = await rasterizeDocx(docxData.arrayBuffer, { width: 816, scale: 1 });
       setRasterizedPages(pages);
+      // Auto-select all pages and update export options
+      onExportOptionsChange({
+        ...exportOptions,
+        selectedRasterPages: new Set(pages.map((_, i) => i)),
+        rasterizedPageCount: pages.length,
+      });
     } catch (err) {
       console.error("Failed to generate rasterized preview:", err);
     } finally {
@@ -153,6 +181,8 @@ export function ArtifactDocxViewer({
       outputFormat: "markdown",
       extractImages: true,
       selectedImages: new Set(),
+      selectedRasterPages: new Set(),
+      rasterizedPageCount: 0,
     });
   };
 
@@ -190,7 +220,7 @@ export function ArtifactDocxViewer({
       count += 1; // Text content (merged)
     }
     if (exportOptions.mode === "rasterize" || exportOptions.mode === "both") {
-      count += Math.max(1, rasterizedPages.length); // One image per page
+      count += exportOptions.selectedRasterPages.size; // Only count SELECTED pages
     }
     if (exportOptions.extractImages) {
       count += exportOptions.selectedImages.size;
@@ -378,11 +408,35 @@ export function ArtifactDocxViewer({
           {/* Rasterized Preview */}
           {(exportOptions.mode === "rasterize" || exportOptions.mode === "both") && (
             <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">
-                  Rasterized Pages {rasterizedPages.length > 0 && `(${rasterizedPages.length})`}
-                </span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">
+                    Rasterized Pages {rasterizedPages.length > 0 && `(${exportOptions.selectedRasterPages.size}/${rasterizedPages.length})`}
+                  </span>
+                </div>
+                {rasterizedPages.length > 0 && (
+                  <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={selectAllRasterPages}
+                    >
+                      <CheckSquare className="h-3 w-3 mr-1" />
+                      All
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={deselectAllRasterPages}
+                    >
+                      <Square className="h-3 w-3 mr-1" />
+                      None
+                    </Button>
+                  </div>
+                )}
               </div>
               <div className="border rounded-lg p-2 bg-background">
                 {isRasterizing ? (
@@ -392,18 +446,34 @@ export function ArtifactDocxViewer({
                   </div>
                 ) : rasterizedPages.length > 0 ? (
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                    {rasterizedPages.map((page, index) => (
-                      <div key={index} className="relative border rounded overflow-hidden bg-white">
-                        <img
-                          src={page}
-                          alt={`Page ${index + 1}`}
-                          className="w-full h-auto object-contain"
-                        />
-                        <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-1 py-0.5">
-                          <p className="text-[10px] text-white text-center">Page {index + 1}</p>
+                    {rasterizedPages.map((page, index) => {
+                      const isSelected = exportOptions.selectedRasterPages.has(index);
+                      return (
+                        <div
+                          key={index}
+                          className={cn(
+                            "relative border rounded overflow-hidden bg-white cursor-pointer",
+                            isSelected ? "ring-2 ring-primary border-primary" : "hover:border-primary/50"
+                          )}
+                          onClick={() => toggleRasterPageSelection(index)}
+                        >
+                          <div className="absolute top-1 left-1 z-10">
+                            <Checkbox
+                              checked={isSelected}
+                              className="h-4 w-4 bg-background/80"
+                            />
+                          </div>
+                          <img
+                            src={page}
+                            alt={`Page ${index + 1}`}
+                            className="w-full h-auto object-contain"
+                          />
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-1 py-0.5">
+                            <p className="text-[10px] text-white text-center">Page {index + 1}</p>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="flex items-center justify-center h-40">

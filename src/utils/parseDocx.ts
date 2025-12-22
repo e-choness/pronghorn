@@ -18,6 +18,8 @@ export interface DocxExportOptions {
   outputFormat: DocxTextFormat;
   extractImages: boolean;
   selectedImages: Set<string>;
+  selectedRasterPages: Set<number>;
+  rasterizedPageCount: number;
 }
 
 export interface DocxData {
@@ -312,6 +314,7 @@ export async function processDocxFile(file: File): Promise<DocxData> {
 /**
  * Rasterize a DOCX document to page images by rendering HTML content
  * Returns an array of page images, each page is US Letter sized (8.5x11 at 96 DPI = 816x1056)
+ * Uses positioning instead of cloning to avoid style loss issues
  */
 export async function rasterizeDocx(
   arrayBuffer: ArrayBuffer,
@@ -326,11 +329,23 @@ export async function rasterizeDocx(
   // Dynamically import html-to-image
   const { toPng } = await import("html-to-image");
   
-  // Create a container element
-  const container = document.createElement("div");
-  container.style.cssText = `
+  // Create a fixed-size viewport container (this is what we capture)
+  const viewport = document.createElement("div");
+  viewport.style.cssText = `
     position: fixed;
     left: -9999px;
+    top: 0;
+    width: ${width}px;
+    height: ${PAGE_HEIGHT}px;
+    overflow: hidden;
+    background: white;
+  `;
+  
+  // Create content wrapper that will be positioned for each page
+  const contentWrapper = document.createElement("div");
+  contentWrapper.style.cssText = `
+    position: absolute;
+    left: 0;
     top: 0;
     width: ${width}px;
     background: white;
@@ -342,8 +357,8 @@ export async function rasterizeDocx(
     font-size: 12pt;
   `;
   
-  // Add styles for the HTML content
-  container.innerHTML = `
+  // Add styles and content
+  contentWrapper.innerHTML = `
     <style>
       h1, h2, h3, h4, h5, h6 { margin: 1em 0 0.5em; font-weight: bold; color: #000; }
       h1 { font-size: 24pt; }
@@ -364,57 +379,40 @@ export async function rasterizeDocx(
     ${htmlContent}
   `;
   
-  document.body.appendChild(container);
+  viewport.appendChild(contentWrapper);
+  document.body.appendChild(viewport);
   
   try {
-    // Wait for any images to load
-    await new Promise(resolve => setTimeout(resolve, 300));
+    // Wait for any images to load and styles to apply
+    await new Promise(resolve => setTimeout(resolve, 500));
     
-    // Get the total content height
-    const contentHeight = container.scrollHeight;
+    // Get the total content height from the content wrapper
+    const contentHeight = contentWrapper.scrollHeight;
     const pageCount = Math.max(1, Math.ceil(contentHeight / PAGE_HEIGHT));
     const pages: string[] = [];
     
-    // Capture each page
+    // Capture each page by repositioning the content wrapper
     for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
-      // Create a wrapper that clips to the current page
-      const pageWrapper = document.createElement("div");
-      pageWrapper.style.cssText = `
-        position: fixed;
-        left: -9999px;
-        top: 0;
-        width: ${width}px;
-        height: ${PAGE_HEIGHT}px;
-        overflow: hidden;
-        background: white;
-      `;
+      // Move content up to show current page in viewport
+      contentWrapper.style.top = `-${pageIndex * PAGE_HEIGHT}px`;
       
-      // Clone the container and offset it
-      const clone = container.cloneNode(true) as HTMLElement;
-      clone.style.position = "absolute";
-      clone.style.left = "0";
-      clone.style.top = `-${pageIndex * PAGE_HEIGHT}px`;
+      // Wait for reflow
+      await new Promise(resolve => setTimeout(resolve, 100));
       
-      pageWrapper.appendChild(clone);
-      document.body.appendChild(pageWrapper);
-      
-      try {
-        const dataUrl = await toPng(pageWrapper, {
-          pixelRatio: scale,
-          backgroundColor: "#ffffff",
-          width: width,
-          height: PAGE_HEIGHT,
-        });
-        pages.push(dataUrl);
-      } finally {
-        document.body.removeChild(pageWrapper);
-      }
+      // Capture the viewport (which shows the current page section)
+      const dataUrl = await toPng(viewport, {
+        pixelRatio: scale,
+        backgroundColor: "#ffffff",
+        width: width,
+        height: PAGE_HEIGHT,
+      });
+      pages.push(dataUrl);
     }
     
     return pages;
   } finally {
     // Clean up
-    document.body.removeChild(container);
+    document.body.removeChild(viewport);
   }
 }
 
