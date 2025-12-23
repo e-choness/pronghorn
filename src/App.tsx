@@ -26,10 +26,12 @@ import Artifacts from "./pages/project/Artifacts";
 import Chat from "./pages/project/Chat";
 import { ScrollToTop } from "./components/ScrollToTop";
 import Gallery from "./pages/Gallery";
+import { PWAUpdatePrompt } from "./components/PWAUpdatePrompt";
 
 const App = () => (
   <>
     <ScrollToTop />
+    <PWAUpdatePrompt />
     <Routes>
     <Route path="/" element={<Landing />} />
     <Route path="/auth" element={<Auth />} />
