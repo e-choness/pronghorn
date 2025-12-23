@@ -205,6 +205,7 @@ export function EnhanceImageDialog({
             shareToken,
             fileName: `${selectedArtifacts.size > 0 ? 'enhanced' : 'generated'}-${Date.now()}.png`,
             uploadOnly: true,  // Skip artifact creation in upload function
+            content: prompt,   // Include prompt as fallback content
           }),
         }
       );
