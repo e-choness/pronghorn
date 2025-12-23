@@ -91,23 +91,13 @@ export function ApplyBuildBookDialog({ projectId, shareToken, onApplied }: Apply
         });
       }
 
-      // Get all tech stack items for these stacks
-      if (techStackIds.length > 0) {
-        const { data: techItems } = await supabase
-          .from("tech_stacks")
-          .select("id")
-          .in("parent_id", techStackIds);
-
-        const techItemIds = techItems?.map((t) => t.id) || [];
-
-        // Insert project tech stacks
-        for (const techStackId of techItemIds) {
-          await supabase.rpc("insert_project_tech_stack_with_token", {
-            p_project_id: projectId,
-            p_token: shareToken || null,
-            p_tech_stack_id: techStackId,
-          });
-        }
+      // Insert project tech stacks directly (build_book_tech_stacks stores individual item IDs)
+      for (const techStackId of techStackIds) {
+        await supabase.rpc("insert_project_tech_stack_with_token", {
+          p_project_id: projectId,
+          p_token: shareToken || null,
+          p_tech_stack_id: techStackId,
+        });
       }
 
       toast.success("Build book applied successfully");
