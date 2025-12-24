@@ -54,84 +54,175 @@ function StandardNode({
   return (
     <div className="select-none">
       <div
-        className="group flex items-center gap-1 md:gap-2 py-2 px-1 md:px-2 rounded-md hover:bg-muted/50 transition-colors"
+        className="group py-2 px-1 md:px-2 rounded-md hover:bg-muted/50 transition-colors"
         style={{ paddingLeft: `${level * 10 + 4}px` }}
       >
-        {hasChildren ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-5 w-5 p-0 flex-shrink-0"
-            onClick={() => setIsExpanded(!isExpanded)}
-          >
-            {isExpanded ? (
-              <ChevronDown className="h-3 w-3" />
+        {/* Mobile Layout */}
+        <div className="md:hidden">
+          <div className="flex items-start gap-1">
+            {hasChildren ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 p-0 flex-shrink-0 mt-0.5"
+                onClick={() => setIsExpanded(!isExpanded)}
+              >
+                {isExpanded ? (
+                  <ChevronDown className="h-3 w-3" />
+                ) : (
+                  <ChevronRight className="h-3 w-3" />
+                )}
+              </Button>
             ) : (
-              <ChevronRight className="h-3 w-3" />
+              <div className="h-5 w-5 flex-shrink-0" />
             )}
-          </Button>
-        ) : (
-          <div className="h-5 w-5 flex-shrink-0" />
-        )}
-
-        <div className="flex-1 min-w-0 overflow-hidden">
-          <div
-            className="flex items-center gap-1 md:gap-2 cursor-pointer flex-wrap"
-            onClick={() => onSelect?.(standard)}
-          >
-            <Badge variant="outline" className="font-mono text-[10px] md:text-xs flex-shrink-0">
-              {standard.code}
-            </Badge>
-            <span className="text-xs md:text-sm font-medium truncate">{standard.title}</span>
+            
+            <div className="flex-1 min-w-0">
+              {/* Code badge on its own line */}
+              <Badge variant="outline" className="font-mono text-[10px] mb-1">
+                {standard.code}
+              </Badge>
+              
+              {/* Title */}
+              <div
+                className="text-xs font-medium cursor-pointer"
+                onClick={() => onSelect?.(standard)}
+              >
+                {standard.title}
+              </div>
+              
+              {/* Description full width */}
+              {standard.description && (
+                <p className="text-[10px] text-muted-foreground mt-1 line-clamp-3">
+                  {standard.description}
+                </p>
+              )}
+              
+              {/* Actions on their own row */}
+              <div className="flex items-center gap-1 mt-2">
+                {hasAttachments && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-6 w-6">
+                          <FileText className="h-3 w-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <div className="space-y-1">
+                          {standard.attachments!.map((att) => (
+                            <div key={att.id} className="text-xs">
+                              <a
+                                href={att.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="hover:underline flex items-center gap-1"
+                              >
+                                <ExternalLink className="h-2 w-2" />
+                                {att.name}
+                              </a>
+                            </div>
+                          ))}
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                
+                {showLinkButton && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-[10px]"
+                    onClick={() => onLink?.(standard)}
+                  >
+                    <LinkIcon className="h-3 w-3 mr-1" />
+                    Link
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
-          {standard.description && (
-            <p className="text-[10px] md:text-xs text-muted-foreground mt-1 line-clamp-2">
-              {standard.description}
-            </p>
-          )}
         </div>
 
-        <div className="flex items-center gap-0.5 md:gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex-shrink-0">
-          {hasAttachments && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-5 w-5 md:h-6 md:w-6">
-                    <FileText className="h-2.5 w-2.5 md:h-3 md:w-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <div className="space-y-1">
-                    {standard.attachments!.map((att) => (
-                      <div key={att.id} className="text-xs">
-                        <a
-                          href={att.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="hover:underline flex items-center gap-1"
-                        >
-                          <ExternalLink className="h-2 w-2" />
-                          {att.name}
-                        </a>
-                      </div>
-                    ))}
-                  </div>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-          
-          {showLinkButton && (
+        {/* Desktop Layout */}
+        <div className="hidden md:flex items-center gap-2">
+          {hasChildren ? (
             <Button
               variant="ghost"
-              size="sm"
-              className="h-5 px-1 text-[10px] md:h-6 md:px-2 md:text-xs"
-              onClick={() => onLink?.(standard)}
+              size="icon"
+              className="h-5 w-5 p-0 flex-shrink-0"
+              onClick={() => setIsExpanded(!isExpanded)}
             >
-              <LinkIcon className="h-2.5 w-2.5 md:h-3 md:w-3 md:mr-1" />
-              <span className="hidden md:inline">Link</span>
+              {isExpanded ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
             </Button>
+          ) : (
+            <div className="h-5 w-5 flex-shrink-0" />
           )}
+
+          <div className="flex-1 min-w-0 overflow-hidden">
+            <div
+              className="flex items-center gap-2 cursor-pointer"
+              onClick={() => onSelect?.(standard)}
+            >
+              <Badge variant="outline" className="font-mono text-xs flex-shrink-0">
+                {standard.code}
+              </Badge>
+              <span className="text-sm font-medium truncate">{standard.title}</span>
+            </div>
+            {standard.description && (
+              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                {standard.description}
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+            {hasAttachments && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-6 w-6">
+                      <FileText className="h-3 w-3" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <div className="space-y-1">
+                      {standard.attachments!.map((att) => (
+                        <div key={att.id} className="text-xs">
+                          <a
+                            href={att.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:underline flex items-center gap-1"
+                          >
+                            <ExternalLink className="h-2 w-2" />
+                            {att.name}
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            
+            {showLinkButton && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs"
+                onClick={() => onLink?.(standard)}
+              >
+                <LinkIcon className="h-3 w-3 mr-1" />
+                Link
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
