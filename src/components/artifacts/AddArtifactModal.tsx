@@ -1302,8 +1302,8 @@ export function AddArtifactModal({
                     onClick={handleOpenVisualRecognition}
                     disabled={isCreating}
                   >
-                    <ScanEye className="h-4 w-4 mr-2" />
-                    Visual Recognition
+                    <ScanEye className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Visual Recognition</span>
                   </Button>
                 )}
                 <Button variant="outline" onClick={handleClose}>
