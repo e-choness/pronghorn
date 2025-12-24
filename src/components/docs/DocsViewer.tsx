@@ -356,7 +356,7 @@ export function DocsViewer({ open, onClose, entityType, rootEntity }: DocsViewer
     <div className="h-full">
       <ResizablePanelGroup direction="horizontal">
         {/* Sidebar */}
-        <ResizablePanel defaultSize={30} minSize={15} maxSize={40}>
+        <ResizablePanel defaultSize={30} minSize={15} maxSize={60}>
           <div className="h-full flex flex-col bg-muted/30">
             <div className="p-3 border-b bg-background">
               <div className="relative">
@@ -387,7 +387,7 @@ export function DocsViewer({ open, onClose, entityType, rootEntity }: DocsViewer
                       : "hover:bg-muted"
                   }`}
                 >
-                  <BookOpen className="h-4 w-4" />
+                  <BookOpen className="h-4 w-4 shrink-0" />
                   Overview
                 </button>
 

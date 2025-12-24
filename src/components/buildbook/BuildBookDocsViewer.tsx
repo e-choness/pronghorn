@@ -659,7 +659,7 @@ export function BuildBookDocsViewer({ buildBook, standards, techStacks }: BuildB
     <div className="h-[calc(100vh-200px)] min-h-[500px] border rounded-lg overflow-hidden bg-background">
       <ResizablePanelGroup direction="horizontal">
         {/* Sidebar */}
-        <ResizablePanel defaultSize={25} minSize={15} maxSize={40}>
+        <ResizablePanel defaultSize={25} minSize={15} maxSize={60}>
           <div className="h-full flex flex-col bg-muted/30">
             <div className="p-3 border-b bg-background space-y-2">
               <div className="flex gap-2 items-center">
