@@ -798,23 +798,25 @@ async function getEventsRenderService(
     try {
       console.log('[render-service] Fetching build logs using /logs endpoint for service:', deployment.render_service_id);
       const logsResponse = await fetch(
-        `${RENDER_API_URL}/logs?ownerId=${ownerId}&resource[]=${deployment.render_service_id}&type[]=build&limit=100`,
+        `${RENDER_API_URL}/logs?ownerId=${ownerId}&resource=${deployment.render_service_id}&type=build&limit=100`,
         { method: 'GET', headers }
       );
       
       if (logsResponse.ok) {
         const logsData = await logsResponse.json();
-        console.log('[render-service] Logs API response items:', logsData.length);
-        if (Array.isArray(logsData) && logsData.length > 0) {
-          // Extract log messages - Render returns array of log objects
-          buildLogs = logsData
+        // Render API returns { hasMore, nextStartTime, nextEndTime, logs: [...] }
+        const logsArray = logsData.logs || [];
+        console.log('[render-service] Logs API response items:', logsArray.length);
+        if (Array.isArray(logsArray) && logsArray.length > 0) {
+          // Extract log messages from the logs array
+          buildLogs = logsArray
             .map((log: any) => {
               const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '';
               const message = log.message || log.text || '';
               return timestamp ? `${timestamp} ${message}` : message;
             })
             .join('\n');
-          console.log('[render-service] Got build logs, lines:', logsData.length);
+          console.log('[render-service] Got build logs, lines:', logsArray.length);
         }
       } else {
         const errorText = await logsResponse.text();
