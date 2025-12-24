@@ -1281,8 +1281,9 @@ export function AddArtifactModal({
 
             {/* Footer */}
             <Separator />
-            <div className="p-4 flex items-center justify-between gap-4 shrink-0 bg-background">
-              <div className="flex items-center gap-2">
+            <div className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4 shrink-0 bg-background">
+              {/* Status text - own row on mobile */}
+              <div className="flex items-center gap-2 justify-center sm:justify-start">
                 <p className="text-sm text-muted-foreground">
                   {totalCount === 0 
                     ? "Select content to add as artifacts" 
@@ -1295,7 +1296,8 @@ export function AddArtifactModal({
                   </Badge>
                 )}
               </div>
-              <div className="flex gap-2">
+              {/* Action buttons - own row on mobile */}
+              <div className="flex gap-2 justify-end">
                 {hasRasterizedContent && (
                   <Button 
                     variant="outline" 
@@ -1319,7 +1321,10 @@ export function AddArtifactModal({
                       {creatingMessage || "Creating..."}
                     </>
                   ) : (
-                    <>Add {totalCount > 0 ? totalCount : ''} Artifact{totalCount !== 1 ? 's' : ''}</>
+                    <>
+                      Add {totalCount > 0 ? totalCount : ''}
+                      <span className="hidden sm:inline">&nbsp;Artifact{totalCount !== 1 ? 's' : ''}</span>
+                    </>
                   )}
                 </Button>
               </div>
