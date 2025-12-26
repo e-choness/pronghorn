@@ -348,7 +348,41 @@ async function executeTool(
   }
 }
 
-// ==================== LLM CALL WITH STREAMING ====================
+// ==================== CLAUDE RESPONSE TOOL FOR STRUCTURED OUTPUT ====================
+
+function getClaudeResponseTool() {
+  return {
+    name: "respond_with_actions",
+    description: "Return your reasoning, tool calls, and continuation flag. You MUST use this tool to respond.",
+    input_schema: {
+      type: "object",
+      properties: {
+        thinking: { type: "string", description: "Your internal reasoning about what to do next" },
+        perspective: { 
+          type: "string", 
+          description: "Which perspective lens you are applying (architect, security, business, developer, user)" 
+        },
+        toolCalls: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              tool: { type: "string", description: "Name of the tool to invoke (read_dataset_item, create_concept, etc.)" },
+              params: { type: "object", description: "Parameters for the tool" },
+              rationale: { type: "string", description: "Why you are calling this tool" },
+            },
+            required: ["tool", "params"],
+          },
+        },
+        continueAnalysis: { type: "boolean", description: "Set to true if more iterations needed, false if done" },
+      },
+      required: ["thinking", "toolCalls", "continueAnalysis"],
+      additionalProperties: false,
+    },
+  };
+}
+
+// ==================== LLM CALL WITH STRUCTURED OUTPUT ====================
 
 async function callLLMWithStreaming(
   apiEndpoint: string,
@@ -392,18 +426,22 @@ async function callLLMWithStreaming(
     rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
     
   } else if (model.startsWith("claude")) {
+    // Use strict tool use for Claude to force structured JSON output
     const response = await fetch(apiEndpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
+        "anthropic-beta": "prompt-caching-2024-07-31",
       },
       body: JSON.stringify({
         model,
         max_tokens: 32768,
         system: systemPrompt,
         messages: [{ role: "user", content: userPrompt }],
+        tools: [getClaudeResponseTool()],
+        tool_choice: { type: "tool", name: "respond_with_actions" },
       }),
     });
     
@@ -413,7 +451,16 @@ async function callLLMWithStreaming(
     }
     
     const data = await response.json();
-    rawText = data.content?.[0]?.text || "{}";
+    
+    // Extract from tool_use content block
+    const toolUseBlock = data.content?.find((c: any) => c.type === "tool_use");
+    if (toolUseBlock?.input) {
+      rawText = JSON.stringify(toolUseBlock.input);
+    } else {
+      // Fallback to text block if no tool_use
+      const textBlock = data.content?.find((c: any) => c.type === "text");
+      rawText = textBlock?.text || "{}";
+    }
     
   } else {
     // Grok
