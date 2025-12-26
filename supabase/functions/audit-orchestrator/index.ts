@@ -945,7 +945,6 @@ Begin your analysis. First, create concept nodes for the key themes in Dataset 1
       p_token: shareToken,
       p_status: finalStatus,
       p_phase: "synthesis",
-      p_completed_at: new Date().toISOString(),
       p_consensus_reached: analysisComplete,
     });
 
