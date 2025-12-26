@@ -436,7 +436,9 @@ export function AuditActivityStream({ activities, isLoading }: AuditActivityStre
             
             <Badge variant="outline" className="hidden sm:flex">
               {viewMode === 'condensed' 
-                ? `${iterationSummaries.length} iterations`
+                ? iterationSummaries.length > 0 
+                  ? `${iterationSummaries.length} (max: ${Math.max(...iterationSummaries.map(s => s.iteration))})`
+                  : '0 iterations'
                 : `${activities.length} events`
               }
             </Badge>
