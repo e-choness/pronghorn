@@ -816,41 +816,30 @@ export function useAuditPipeline() {
           const conceptName = concept.conceptLabel.slice(0, 40);
           
           try {
-            // Truncate content to avoid payload issues - keep only first 5000 chars per element
-            const truncatedConcept = {
-              ...concept,
-              d1Elements: concept.d1Elements.map(e => ({
-                ...e,
-                content: e.content?.slice(0, 5000) || ""
-              })),
-              d2Elements: concept.d2Elements.map(e => ({
-                ...e,
-                content: e.content?.slice(0, 5000) || ""
-              })),
+            // Calculate payload size for debugging
+            const payload = { 
+              sessionId, 
+              projectId, 
+              shareToken, 
+              concepts: [concept]  // Full content, no truncation
             };
+            const payloadStr = JSON.stringify(payload);
+            const payloadSizeKB = Math.round(payloadStr.length / 1024);
+            const d1ContentSize = concept.d1Elements.reduce((sum, e) => sum + (e.content?.length || 0), 0);
+            const d2ContentSize = concept.d2Elements.reduce((sum, e) => sum + (e.content?.length || 0), 0);
 
-            addStepDetail("tesseract", `Starting: ${conceptName}...`);
-            
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout
+            addStepDetail("tesseract", `Starting: ${conceptName} (${payloadSizeKB}KB payload, D1: ${Math.round(d1ContentSize/1024)}KB, D2: ${Math.round(d2ContentSize/1024)}KB)`);
+            console.log(`[tesseract] Processing ${conceptName}: payload=${payloadSizeKB}KB, D1=${concept.d1Elements.length} els (${Math.round(d1ContentSize/1024)}KB), D2=${concept.d2Elements.length} els (${Math.round(d2ContentSize/1024)}KB)`);
 
             const response = await fetch(`${BASE_URL}/audit-build-tesseract`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ 
-                sessionId, 
-                projectId, 
-                shareToken, 
-                concepts: [truncatedConcept]
-              }),
-              signal: controller.signal,
+              body: payloadStr,
             });
-
-            clearTimeout(timeoutId);
 
             if (!response.ok) {
               const errorText = await response.text().catch(() => "Unknown error");
-              const errorMsg = `${conceptName}: HTTP ${response.status} - ${errorText.slice(0, 100)}`;
+              const errorMsg = `${conceptName}: HTTP ${response.status} - ${errorText.slice(0, 200)}`;
               console.error(`[tesseract] Failed:`, errorMsg);
               addStepDetail("tesseract", `❌ ${errorMsg}`);
               errorCount++;
@@ -908,9 +897,7 @@ export function useAuditPipeline() {
             completedCount++;
 
           } catch (err: any) {
-            const errorMsg = err?.name === 'AbortError' 
-              ? `${conceptName}: Timeout (90s)`
-              : `${conceptName}: ${err?.message || 'Unknown error'}`;
+            const errorMsg = `${conceptName}: ${err?.message || 'Unknown error'}`;
             console.error(`[tesseract] Error:`, errorMsg);
             addStepDetail("tesseract", `❌ ${errorMsg}`);
             errorCount++;
