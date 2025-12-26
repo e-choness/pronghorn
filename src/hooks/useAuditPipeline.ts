@@ -1,5 +1,5 @@
 // Hook for orchestrating the new audit pipeline
-// Calls the 4 edge functions in sequence with SSE streaming
+// Calls edge functions in sequence with simple JSON responses
 
 import { useState, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -27,13 +27,7 @@ export interface PipelineProgress {
   tesseractTotal?: number;
 }
 
-interface D1Concept {
-  label: string;
-  description: string;
-  elementIds: string[];
-}
-
-interface D2Concept {
+interface Concept {
   label: string;
   description: string;
   elementIds: string[];
@@ -63,41 +57,7 @@ interface PipelineInput {
   d2Elements: Element[];
 }
 
-// Parse SSE text to extract result
-function extractSSEResult(text: string): any {
-  // Look for the result event
-  const lines = text.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i] === "event: result" && lines[i + 1]?.startsWith("data: ")) {
-      try {
-        return JSON.parse(lines[i + 1].slice(6));
-      } catch {
-        continue;
-      }
-    }
-    // Also handle case where data comes on same conceptual line
-    if (lines[i].startsWith("data: ") && !lines[i].includes("[DONE]")) {
-      const prev = lines[i - 1];
-      if (prev === "event: result") {
-        try {
-          return JSON.parse(lines[i].slice(6));
-        } catch {
-          continue;
-        }
-      }
-    }
-  }
-  // Fallback: try to find any result-like JSON
-  const resultMatch = text.match(/event: result\s*\n\s*data: (.+)/);
-  if (resultMatch) {
-    try {
-      return JSON.parse(resultMatch[1]);
-    } catch {
-      // ignore
-    }
-  }
-  return null;
-}
+const BASE_URL = "https://obkzdksfayygnrzdqoam.supabase.co/functions/v1";
 
 export function useAuditPipeline() {
   const [isRunning, setIsRunning] = useState(false);
@@ -111,48 +71,65 @@ export function useAuditPipeline() {
     abortRef.current = false;
 
     const { sessionId, projectId, shareToken, d1Elements, d2Elements } = input;
-    const baseUrl = `https://obkzdksfayygnrzdqoam.supabase.co/functions/v1`;
 
-    let d1Concepts: D1Concept[] = [];
-    let d2Concepts: D2Concept[] = [];
+    let d1Concepts: Concept[] = [];
+    let d2Concepts: Concept[] = [];
     let mergedConcepts: MergedConcept[] = [];
-    let unmergedD1Concepts: D1Concept[] = [];
-    let unmergedD2Concepts: D2Concept[] = [];
+    let unmergedD1Concepts: Concept[] = [];
+    let unmergedD2Concepts: Concept[] = [];
 
     try {
-      // Phase 0: Create D1 and D2 nodes in graph
-      setProgress({ phase: "creating_nodes", message: `Creating ${d1Elements.length} D1 and ${d2Elements.length} D2 nodes...`, progress: 5 });
+      // ========================================
+      // PHASE 0: Create D1 and D2 nodes immediately
+      // ========================================
+      setProgress({ 
+        phase: "creating_nodes", 
+        message: `Creating ${d1Elements.length} D1 and ${d2Elements.length} D2 nodes...`, 
+        progress: 5 
+      });
 
+      console.log(`[Pipeline] Creating ${d1Elements.length} D1 nodes...`);
+      
+      // Create all D1 nodes
       for (const element of d1Elements) {
-        await supabase.rpc("upsert_audit_graph_node_with_token", {
+        const { error: nodeError } = await supabase.rpc("upsert_audit_graph_node_with_token", {
           p_session_id: sessionId,
           p_token: shareToken,
           p_label: element.label,
-          p_description: element.content?.slice(0, 500) || "",
+          p_description: (element.content || "").slice(0, 500),
           p_node_type: "d1_element",
           p_source_dataset: "dataset1",
           p_source_element_ids: [element.id],
           p_created_by_agent: "pipeline",
-          p_color: "#3b82f6",
+          p_color: "#3b82f6", // Blue for D1
           p_size: 15,
           p_metadata: { category: element.category || "unknown" },
         });
+        if (nodeError) {
+          console.error(`[Pipeline] Error creating D1 node:`, nodeError);
+        }
       }
 
+      console.log(`[Pipeline] Creating ${d2Elements.length} D2 nodes...`);
+      
+      // Create all D2 nodes
       for (const element of d2Elements) {
-        await supabase.rpc("upsert_audit_graph_node_with_token", {
+        const { error: nodeError } = await supabase.rpc("upsert_audit_graph_node_with_token", {
           p_session_id: sessionId,
           p_token: shareToken,
           p_label: element.label,
-          p_description: element.content?.slice(0, 500) || "",
+          p_description: (element.content || "").slice(0, 500),
           p_node_type: "d2_element",
           p_source_dataset: "dataset2",
           p_source_element_ids: [element.id],
           p_created_by_agent: "pipeline",
-          p_color: "#22c55e",
+          p_color: "#22c55e", // Green for D2
           p_size: 15,
           p_metadata: { category: element.category || "unknown" },
         });
+        if (nodeError) {
+          console.error(`[Pipeline] Error creating D2 node:`, nodeError);
+        }
       }
 
       // Update session status
@@ -165,16 +142,24 @@ export function useAuditPipeline() {
 
       if (abortRef.current) throw new Error("Aborted");
 
-      // Phase 1: Extract D1 and D2 concepts in parallel
-      setProgress({ phase: "extracting_d1", message: "Extracting concepts from D1 and D2 in parallel...", progress: 10 });
+      // ========================================
+      // PHASE 1: Extract D1 and D2 concepts in parallel
+      // ========================================
+      setProgress({ 
+        phase: "extracting_d1", 
+        message: `Extracting concepts from ${d1Elements.length} D1 and ${d2Elements.length} D2 elements...`, 
+        progress: 15 
+      });
+
+      console.log(`[Pipeline] Calling concept extraction for D1 and D2...`);
 
       const [d1Response, d2Response] = await Promise.all([
-        fetch(`${baseUrl}/audit-extract-concepts`, {
+        fetch(`${BASE_URL}/audit-extract-concepts`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sessionId, projectId, shareToken, dataset: "d1", elements: d1Elements }),
         }),
-        fetch(`${baseUrl}/audit-extract-concepts`, {
+        fetch(`${BASE_URL}/audit-extract-concepts`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sessionId, projectId, shareToken, dataset: "d2", elements: d2Elements }),
@@ -182,76 +167,101 @@ export function useAuditPipeline() {
       ]);
 
       // Parse D1 results
-      const d1Text = await d1Response.text();
-      const d1Result = extractSSEResult(d1Text);
-      if (d1Result?.concepts) {
-        d1Concepts = d1Result.concepts.map((c: any) => ({
-          label: c.label,
-          description: c.description,
-          elementIds: c.elementIds || [],
-        }));
+      if (!d1Response.ok) {
+        const errText = await d1Response.text();
+        console.error(`[Pipeline] D1 extraction failed:`, errText);
+        throw new Error(`D1 concept extraction failed: ${d1Response.status}`);
       }
+      const d1Result = await d1Response.json();
+      if (!d1Result.success) {
+        throw new Error(`D1 extraction error: ${d1Result.error}`);
+      }
+      d1Concepts = d1Result.concepts || [];
+      console.log(`[Pipeline] D1 returned ${d1Concepts.length} concepts`);
 
       // Parse D2 results
-      const d2Text = await d2Response.text();
-      const d2Result = extractSSEResult(d2Text);
-      if (d2Result?.concepts) {
-        d2Concepts = d2Result.concepts.map((c: any) => ({
-          label: c.label,
-          description: c.description,
-          elementIds: c.elementIds || [],
-        }));
+      if (!d2Response.ok) {
+        const errText = await d2Response.text();
+        console.error(`[Pipeline] D2 extraction failed:`, errText);
+        throw new Error(`D2 concept extraction failed: ${d2Response.status}`);
       }
+      const d2Result = await d2Response.json();
+      if (!d2Result.success) {
+        throw new Error(`D2 extraction error: ${d2Result.error}`);
+      }
+      d2Concepts = d2Result.concepts || [];
+      console.log(`[Pipeline] D2 returned ${d2Concepts.length} concepts`);
 
       setProgress({ 
         phase: "merging_concepts", 
         message: `Merging ${d1Concepts.length} D1 and ${d2Concepts.length} D2 concepts...`, 
-        progress: 30,
+        progress: 35,
         d1ConceptCount: d1Concepts.length,
         d2ConceptCount: d2Concepts.length
       });
 
       if (abortRef.current) throw new Error("Aborted");
 
-      // Phase 2: Merge concepts
-      // Convert to expected format for merge function
+      // ========================================
+      // PHASE 2: Merge concepts
+      // ========================================
       const d1ForMerge = d1Concepts.map(c => ({ label: c.label, description: c.description, d1Ids: c.elementIds }));
       const d2ForMerge = d2Concepts.map(c => ({ label: c.label, description: c.description, d2Ids: c.elementIds }));
 
-      const mergeResponse = await fetch(`${baseUrl}/audit-merge-concepts`, {
+      console.log(`[Pipeline] Calling merge-concepts...`);
+      
+      const mergeResponse = await fetch(`${BASE_URL}/audit-merge-concepts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId, projectId, shareToken, d1Concepts: d1ForMerge, d2Concepts: d2ForMerge }),
       });
 
-      const mergeText = await mergeResponse.text();
-      const mergeResult = extractSSEResult(mergeText);
-      if (mergeResult) {
-        mergedConcepts = mergeResult.mergedConcepts || [];
-        unmergedD1Concepts = (mergeResult.unmergedD1Concepts || []).map((c: any) => ({
-          label: c.label,
-          description: c.description,
-          elementIds: c.d1Ids || [],
-        }));
-        unmergedD2Concepts = (mergeResult.unmergedD2Concepts || []).map((c: any) => ({
-          label: c.label,
-          description: c.description,
-          elementIds: c.d2Ids || [],
-        }));
+      if (!mergeResponse.ok) {
+        const errText = await mergeResponse.text();
+        console.error(`[Pipeline] Merge failed:`, errText);
+        throw new Error(`Merge concepts failed: ${mergeResponse.status}`);
       }
+      
+      const mergeResult = await mergeResponse.json();
+      if (!mergeResult.success) {
+        throw new Error(`Merge error: ${mergeResult.error}`);
+      }
+      
+      mergedConcepts = mergeResult.mergedConcepts || [];
+      unmergedD1Concepts = (mergeResult.unmergedD1Concepts || []).map((c: any) => ({
+        label: c.label,
+        description: c.description,
+        elementIds: c.d1Ids || [],
+      }));
+      unmergedD2Concepts = (mergeResult.unmergedD2Concepts || []).map((c: any) => ({
+        label: c.label,
+        description: c.description,
+        elementIds: c.d2Ids || [],
+      }));
+
+      console.log(`[Pipeline] Merge returned ${mergedConcepts.length} merged, ${unmergedD1Concepts.length} unmerged D1, ${unmergedD2Concepts.length} unmerged D2`);
 
       setProgress({ 
         phase: "building_graph", 
         message: `Creating ${mergedConcepts.length} merged concept nodes and edges...`, 
-        progress: 45,
+        progress: 50,
         mergedCount: mergedConcepts.length
       });
 
       if (abortRef.current) throw new Error("Aborted");
 
-      // Phase 2.5: Build graph nodes for concepts and create edges
+      // ========================================
+      // PHASE 2.5: Build graph nodes for concepts and create edges
+      // ========================================
+      
+      // First, get all existing nodes so we can link to them
+      const { data: allNodes } = await supabase.rpc("get_audit_graph_nodes_with_token", {
+        p_session_id: sessionId,
+        p_token: shareToken,
+      });
+
+      // Create merged concept nodes and edges
       for (const concept of mergedConcepts) {
-        // Create merged concept node
         const { data: conceptNode } = await supabase.rpc("upsert_audit_graph_node_with_token", {
           p_session_id: sessionId,
           p_token: shareToken,
@@ -269,11 +279,7 @@ export function useAuditPipeline() {
         if (conceptNode?.id) {
           // Create edges from D1 elements to concept
           for (const d1Id of concept.d1Ids) {
-            const { data: d1Nodes } = await supabase.rpc("get_audit_graph_nodes_with_token", {
-              p_session_id: sessionId,
-              p_token: shareToken,
-            });
-            const d1Node = d1Nodes?.find((n: any) => n.source_element_ids?.includes(d1Id));
+            const d1Node = allNodes?.find((n: any) => n.source_element_ids?.includes(d1Id));
             if (d1Node) {
               await supabase.rpc("insert_audit_graph_edge_with_token", {
                 p_session_id: sessionId,
@@ -291,11 +297,7 @@ export function useAuditPipeline() {
 
           // Create edges from D2 elements to concept
           for (const d2Id of concept.d2Ids) {
-            const { data: d2Nodes } = await supabase.rpc("get_audit_graph_nodes_with_token", {
-              p_session_id: sessionId,
-              p_token: shareToken,
-            });
-            const d2Node = d2Nodes?.find((n: any) => n.source_element_ids?.includes(d2Id));
+            const d2Node = allNodes?.find((n: any) => n.source_element_ids?.includes(d2Id));
             if (d2Node) {
               await supabase.rpc("insert_audit_graph_edge_with_token", {
                 p_session_id: sessionId,
@@ -313,9 +315,9 @@ export function useAuditPipeline() {
         }
       }
 
-      // Create nodes for unmerged D1 concepts (gaps)
+      // Create nodes for unmerged D1 concepts (gaps - requirements not met)
       for (const concept of unmergedD1Concepts) {
-        await supabase.rpc("upsert_audit_graph_node_with_token", {
+        const { data: gapNode } = await supabase.rpc("upsert_audit_graph_node_with_token", {
           p_session_id: sessionId,
           p_token: shareToken,
           p_label: concept.label,
@@ -328,11 +330,31 @@ export function useAuditPipeline() {
           p_size: 22,
           p_metadata: { gap: true, unmerged: true },
         });
+
+        // Create edges from D1 elements to gap concept
+        if (gapNode?.id) {
+          for (const d1Id of concept.elementIds) {
+            const d1Node = allNodes?.find((n: any) => n.source_element_ids?.includes(d1Id));
+            if (d1Node) {
+              await supabase.rpc("insert_audit_graph_edge_with_token", {
+                p_session_id: sessionId,
+                p_token: shareToken,
+                p_source_node_id: d1Node.id,
+                p_target_node_id: gapNode.id,
+                p_edge_type: "defines",
+                p_label: "defines",
+                p_weight: 1.0,
+                p_created_by_agent: "pipeline",
+                p_metadata: {},
+              });
+            }
+          }
+        }
       }
 
-      // Create nodes for unmerged D2 concepts (orphans)
+      // Create nodes for unmerged D2 concepts (orphans - impl without requirements)
       for (const concept of unmergedD2Concepts) {
-        await supabase.rpc("upsert_audit_graph_node_with_token", {
+        const { data: orphanNode } = await supabase.rpc("upsert_audit_graph_node_with_token", {
           p_session_id: sessionId,
           p_token: shareToken,
           p_label: concept.label,
@@ -345,19 +367,43 @@ export function useAuditPipeline() {
           p_size: 22,
           p_metadata: { orphan: true, unmerged: true },
         });
+
+        // Create edges from D2 elements to orphan concept
+        if (orphanNode?.id) {
+          for (const d2Id of concept.elementIds) {
+            const d2Node = allNodes?.find((n: any) => n.source_element_ids?.includes(d2Id));
+            if (d2Node) {
+              await supabase.rpc("insert_audit_graph_edge_with_token", {
+                p_session_id: sessionId,
+                p_token: shareToken,
+                p_source_node_id: d2Node.id,
+                p_target_node_id: orphanNode.id,
+                p_edge_type: "implements",
+                p_label: "implements",
+                p_weight: 1.0,
+                p_created_by_agent: "pipeline",
+                p_metadata: {},
+              });
+            }
+          }
+        }
       }
 
       setProgress({ 
         phase: "building_tesseract", 
         message: `Analyzing ${mergedConcepts.length} merged concepts for alignment...`, 
-        progress: 55,
+        progress: 65,
         tesseractTotal: mergedConcepts.length
       });
 
       if (abortRef.current) throw new Error("Aborted");
 
-      // Phase 3: Build tesseract
-      const tesseractResponse = await fetch(`${baseUrl}/audit-build-tesseract`, {
+      // ========================================
+      // PHASE 3: Build tesseract
+      // ========================================
+      console.log(`[Pipeline] Calling build-tesseract...`);
+      
+      const tesseractResponse = await fetch(`${BASE_URL}/audit-build-tesseract`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -368,9 +414,14 @@ export function useAuditPipeline() {
         }),
       });
 
-      const tesseractText = await tesseractResponse.text();
-      const tesseractResult = extractSSEResult(tesseractText);
-      const tesseractCells = tesseractResult?.cells || [];
+      let tesseractCells: any[] = [];
+      if (tesseractResponse.ok) {
+        const tesseractResult = await tesseractResponse.json();
+        tesseractCells = tesseractResult?.cells || [];
+        console.log(`[Pipeline] Tesseract returned ${tesseractCells.length} cells`);
+      } else {
+        console.error(`[Pipeline] Tesseract failed, continuing...`);
+      }
 
       setProgress({ 
         phase: "generating_venn", 
@@ -380,8 +431,12 @@ export function useAuditPipeline() {
 
       if (abortRef.current) throw new Error("Aborted");
 
-      // Phase 4: Generate Venn
-      await fetch(`${baseUrl}/audit-generate-venn`, {
+      // ========================================
+      // PHASE 4: Generate Venn
+      // ========================================
+      console.log(`[Pipeline] Calling generate-venn...`);
+      
+      await fetch(`${BASE_URL}/audit-generate-venn`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -395,10 +450,20 @@ export function useAuditPipeline() {
         }),
       });
 
+      // Update session to completed
+      await supabase.rpc("update_audit_session_with_token", {
+        p_session_id: sessionId,
+        p_token: shareToken,
+        p_status: "completed",
+        p_phase: "completed",
+      });
+
       setProgress({ phase: "completed", message: "Audit pipeline complete!", progress: 100 });
+      console.log(`[Pipeline] Complete!`);
 
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
+      console.error(`[Pipeline] Error:`, errMsg);
       setError(errMsg);
       setProgress({ phase: "error", message: errMsg, progress: 0 });
       
