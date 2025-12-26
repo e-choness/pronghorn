@@ -1,6 +1,6 @@
-// ==================== AUDIT ORCHESTRATOR v2 ====================
-// Single orchestrator with perspective lenses, tool-based operations, streaming responses
-// Mandatory source artifact linking, proper Venn diagram analysis
+// ==================== AUDIT ORCHESTRATOR v3 ====================
+// Multi-tool Claude orchestrator with clean conversation structure
+// Architecture: system prompt once, user provides context each iteration, assistant calls tools
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
@@ -37,9 +37,41 @@ interface OrchestratorResponse {
   continueAnalysis: boolean;
 }
 
+// ==================== CONVERSATION ARCHITECTURE ====================
+// 
+// Claude requires strict tool_use/tool_result pairing. Our architecture:
+//
+// SYSTEM PROMPT: Contains the full task description (sent once, not repeated)
+//
+// MESSAGE 1: user - Initial task with dataset summaries
+// MESSAGE 2: assistant - tool_use block with respond_with_actions
+// MESSAGE 3: user - tool_result block with execution results + context update
+// MESSAGE 4: assistant - tool_use block with respond_with_actions  
+// MESSAGE 5: user - tool_result block with execution results + context update
+// ... and so on
+//
+// CRITICAL RULES:
+// 1. Every assistant message MUST be a tool_use block (we force tool_choice)
+// 2. Every tool_use MUST be immediately followed by a tool_result with the same ID
+// 3. User messages include: tool results + current blackboard + graph stats + phase info
+// 4. Never include plain text assistant messages
+
+interface ClaudeMessage {
+  role: "user" | "assistant";
+  content: string | any[];
+}
+
+// Track each iteration's exchange
+interface IterationRecord {
+  iteration: number;
+  toolUseId: string;
+  assistantInput: any; // The parsed input from respond_with_actions
+  toolResults: string; // The results from executing tools
+}
+
 // ==================== MAIN SYSTEM PROMPT ====================
 
-function getOrchestratorSystemPrompt(problemShape: ProblemShape, phase: string): string {
+function getSystemPrompt(problemShape: ProblemShape): string {
   const toolDescriptions = ORCHESTRATOR_TOOLS.map(t => 
     `- **${t.name}**: ${t.description}`
   ).join("\n");
@@ -48,63 +80,68 @@ function getOrchestratorSystemPrompt(problemShape: ProblemShape, phase: string):
     `- **${p.id}** (${p.name}): ${p.focus}`
   ).join("\n");
 
-  return `You are the Audit Orchestrator. Your job is to compare Dataset 1 (source of truth) against Dataset 2 (implementation) and produce a Venn diagram showing coverage, gaps, and orphans.
+  return `You are the Audit Orchestrator. Your mission is to compare Dataset 1 (source of truth) against Dataset 2 (implementation) and produce a comprehensive Venn diagram showing coverage, gaps, and orphans.
 
-## Datasets
-- **Dataset 1** (${problemShape.dataset1.type}): ${problemShape.dataset1.count} elements
-- **Dataset 2** (${problemShape.dataset2.type}): ${problemShape.dataset2.count} elements
+## THE DATASETS
 
-## MANDATORY: You MUST call tools EVERY iteration!
+**Dataset 1** (${problemShape.dataset1.type}): ${problemShape.dataset1.count} elements - This is the SOURCE OF TRUTH
+**Dataset 2** (${problemShape.dataset2.type}): ${problemShape.dataset2.count} elements - This is the IMPLEMENTATION
 
-**CRITICAL RULES:**
-1. **ALWAYS use write_blackboard** to track your progress. Write your plan at the start, findings as you discover them, and conclusions at the end.
-2. **ALWAYS call at least one tool** in every response. If you have no tools to call, you're done.
-3. **Batch tool calls** - you can call MULTIPLE tools in one response. Call up to 10 tools at once for efficiency.
-4. **EVERY concept node MUST have sourceElementIds** - these link to the original artifacts.
+## YOUR TOOLS
 
-## Current Phase: ${phase.toUpperCase()}
-
-## Available Tools
+You have these tools available - call them via the toolCalls array:
 ${toolDescriptions}
 
-## Perspective Lenses
+## PERSPECTIVE LENSES
+
+Apply these perspectives during analysis:
 ${perspectiveDescriptions}
 
-## REQUIRED WORKFLOW - Follow these phases in order:
+## ANALYSIS PHASES
 
 ### Phase 1: GRAPH_BUILDING (iterations 1-30)
-1. First, call write_blackboard with entryType="plan" describing your analysis strategy
-2. Call read_dataset_item for EVERY item in Dataset 1 (batch 5-10 per iteration)
-3. Call read_dataset_item for EVERY item in Dataset 2 (batch 5-10 per iteration)  
-4. For each meaningful theme, call create_concept with proper sourceElementIds
-5. Call link_concepts to connect related concepts
-6. Call write_blackboard with entryType="observation" as you find patterns
+- Call write_blackboard with entryType="plan" to document your strategy
+- Call read_dataset_item for EVERY element in Dataset 1 (batch 5-10 per iteration)
+- Call read_dataset_item for EVERY element in Dataset 2 (batch 5-10 per iteration)
+- Call create_concept for major themes/concepts (include sourceElementIds!)
+- Call link_concepts to connect related concepts
+- Call write_blackboard with entryType="observation" as you find patterns
 
-### Phase 2: GAP_ANALYSIS (iterations 30-50)
-1. Call query_knowledge_graph with filter="dataset1_only" to find GAPS
-2. Call query_knowledge_graph with filter="dataset2_only" to find ORPHANS
-3. Call query_knowledge_graph with filter="shared" to find ALIGNED items
-4. Write findings to blackboard with entryType="finding"
+### Phase 2: GAP_ANALYSIS (iterations 30-50)  
+- Call query_knowledge_graph with filter="dataset1_only" to find GAPS
+- Call query_knowledge_graph with filter="dataset2_only" to find ORPHANS
+- Call query_knowledge_graph with filter="shared" to find ALIGNED items
+- Call write_blackboard with entryType="finding" for each discovery
 
 ### Phase 3: DEEP_ANALYSIS (iterations 50-80)
-1. For each D1 element, call record_tesseract_cell with polarity scores
-2. Assess coverage quality for aligned items
-3. Write conclusions to blackboard
+- Call record_tesseract_cell for each D1 element with polarity scores
+- Assess coverage quality and completeness
+- Call write_blackboard with entryType="conclusion" for insights
 
 ### Phase 4: SYNTHESIS (final iterations)
-1. Call read_blackboard to review all findings
-2. Call finalize_venn with complete uniqueToD1, aligned, and uniqueToD2 arrays
-3. Set continueAnalysis=false
+- Call read_blackboard to review all findings
+- Call finalize_venn with complete arrays for uniqueToD1, aligned, uniqueToD2
+- Set continueAnalysis=false
 
-## Analysis Steps for Each Element
+## ANALYSIS STEPS FOR EACH ELEMENT
+
 ${problemShape.analysisSteps.map(s => `${s.step}. ${s.label}`).join("\n")}
 
-## REMEMBER:
-- Call write_blackboard frequently - it's your working memory
-- Batch multiple read_dataset_item calls together
-- Create concept nodes for themes, NOT for every single element
-- ALWAYS include sourceElementIds when creating concepts
-- Set continueAnalysis=false ONLY after calling finalize_venn`;
+## CRITICAL RULES
+
+1. **ALWAYS call at least one tool** in every response
+2. **BATCH tool calls** - call up to 10 tools at once for efficiency  
+3. **write_blackboard frequently** - it's your working memory
+4. **ALWAYS include sourceElementIds** when creating concept nodes
+5. **Set continueAnalysis=false** ONLY after calling finalize_venn
+
+## RESPONSE FORMAT
+
+You MUST respond using the respond_with_actions tool with:
+- thinking: Your internal reasoning about what to do next
+- perspective: Which lens you're applying (architect/security/business/developer/user)
+- toolCalls: Array of tools to execute (REQUIRED - at least one!)
+- continueAnalysis: true to continue, false only after finalize_venn`;
 }
 
 // ==================== BATTLE-TESTED JSON PARSER ====================
@@ -184,73 +221,94 @@ async function executeTool(
     
     switch (toolName) {
       case "read_dataset_item": {
-        // Schema enforces: dataset, itemId
-        const { dataset, itemId } = params;
+        // Tolerant param extraction
+        const dataset = params.dataset || params.datasetId || "dataset1";
+        const itemId = params.itemId || params.elementId || params.id;
         
-        const elements = dataset === "dataset1" 
+        const normalizedDataset = dataset === "1" ? "dataset1" : dataset === "2" ? "dataset2" : dataset;
+        const elements = normalizedDataset === "dataset1" 
           ? problemShape.dataset1.elements 
           : problemShape.dataset2.elements;
         
-        // Support partial ID matching (8-char prefix like "a203ec4d")
+        // Support partial ID matching
         const item = elements.find(e => e.id === itemId || e.id.startsWith(itemId));
         
         if (item) {
-          console.log(`[read_dataset_item] Found:`, item.id);
           return { success: true, result: item };
         }
-        console.log(`[read_dataset_item] Not found: ${itemId} in ${dataset}`);
-        return { success: true, result: { error: `Item ${itemId} not found in ${dataset}` } };
+        return { success: false, result: null, error: `Item ${itemId} not found in ${normalizedDataset}` };
       }
-
+      
       case "query_knowledge_graph": {
-        const { filter, nodeType, limit = 50 } = params;
-        const nodes = await rpc("get_audit_graph_nodes_with_token", { p_session_id: sessionId, p_token: shareToken });
-        const edges = await rpc("get_audit_graph_edges_with_token", { p_session_id: sessionId, p_token: shareToken });
+        const filter = params.filter || "all";
+        const limit = params.limit || 50;
         
-        // Build connectivity info
-        const connectedToD1 = new Set<string>();
-        const connectedToD2 = new Set<string>();
-        const d1Ids = new Set(problemShape.dataset1.elements.map(e => e.id));
-        const d2Ids = new Set(problemShape.dataset2.elements.map(e => e.id));
+        const { data: nodes } = await supabase.rpc("get_audit_graph_nodes_with_token", {
+          p_session_id: sessionId,
+          p_token: shareToken,
+        });
         
-        for (const node of nodes || []) {
-          const sourceIds = node.source_element_ids || [];
-          if (sourceIds.some((id: string) => d1Ids.has(id))) connectedToD1.add(node.id);
-          if (sourceIds.some((id: string) => d2Ids.has(id))) connectedToD2.add(node.id);
+        const { data: edges } = await supabase.rpc("get_audit_graph_edges_with_token", {
+          p_session_id: sessionId,
+          p_token: shareToken,
+        });
+        
+        let filteredNodes = nodes || [];
+        
+        if (filter === "dataset1_only") {
+          filteredNodes = filteredNodes.filter((n: any) => n.source_dataset === "dataset1");
+        } else if (filter === "dataset2_only") {
+          filteredNodes = filteredNodes.filter((n: any) => n.source_dataset === "dataset2");
+        } else if (filter === "shared") {
+          filteredNodes = filteredNodes.filter((n: any) => n.source_dataset === "both");
         }
         
-        let filtered = nodes || [];
-        if (filter === "dataset1_only") filtered = filtered.filter((n: any) => connectedToD1.has(n.id) && !connectedToD2.has(n.id));
-        else if (filter === "dataset2_only") filtered = filtered.filter((n: any) => connectedToD2.has(n.id) && !connectedToD1.has(n.id));
-        else if (filter === "shared") filtered = filtered.filter((n: any) => connectedToD1.has(n.id) && connectedToD2.has(n.id));
-        else if (filter === "orphans") {
-          const connected = new Set<string>();
-          (edges || []).forEach((e: any) => { connected.add(e.source_node_id); connected.add(e.target_node_id); });
-          filtered = filtered.filter((n: any) => !connected.has(n.id));
-        }
-        
-        if (nodeType) filtered = filtered.filter((n: any) => n.node_type === nodeType);
-        
-        return { success: true, result: { nodes: filtered.slice(0, limit), totalCount: filtered.length } };
+        return { 
+          success: true, 
+          result: { 
+            nodes: filteredNodes.slice(0, limit).map((n: any) => ({
+              id: n.id,
+              label: n.label,
+              sourceDataset: n.source_dataset,
+              sourceElementIds: n.source_element_ids
+            })),
+            edges: (edges || []).slice(0, limit * 2).map((e: any) => ({
+              id: e.id,
+              source: e.source_node_id,
+              target: e.target_node_id,
+              type: e.edge_type
+            })),
+            totalNodes: filteredNodes.length,
+            totalEdges: (edges || []).length
+          } 
+        };
       }
-
+      
       case "get_concept_links": {
         const nodeId = params.nodeId || params.id;
-        const nodes = await rpc("get_audit_graph_nodes_with_token", { p_session_id: sessionId, p_token: shareToken });
-        const node = nodes?.find((n: any) => n.id === nodeId || n.id.startsWith(nodeId));
-        if (!node) return { success: false, error: "Node not found", result: null };
         
-        const d1Elements = problemShape.dataset1.elements.filter(e => (node.source_element_ids || []).includes(e.id));
-        const d2Elements = problemShape.dataset2.elements.filter(e => (node.source_element_ids || []).includes(e.id));
+        const { data: edges } = await supabase.rpc("get_audit_graph_edges_with_token", {
+          p_session_id: sessionId,
+          p_token: shareToken,
+        });
         
-        return { success: true, result: { node, linkedD1: d1Elements, linkedD2: d2Elements } };
+        const relatedEdges = (edges || []).filter((e: any) => 
+          e.source_node_id === nodeId || e.target_node_id === nodeId ||
+          e.source_node_id.startsWith(nodeId) || e.target_node_id.startsWith(nodeId)
+        );
+        
+        return { success: true, result: { nodeId, edges: relatedEdges } };
       }
-
+      
       case "write_blackboard": {
-        // Schema enforces: entryType, content, confidence?, targetAgent?
-        const { entryType, content, confidence = 0.7, targetAgent = null } = params;
+        const entryType = params.entryType || params.entry_type || "observation";
+        const content = params.content || params.entry || params.text || "";
+        const confidence = params.confidence ?? 0.8;
+        const targetAgent = params.targetAgent || params.target_agent || null;
         
-        console.log(`[write_blackboard] entryType=${entryType}, content length=${content?.length || 0}`);
+        if (!content) {
+          return { success: false, result: null, error: "Content is required for write_blackboard" };
+        }
         
         await rpc("insert_audit_blackboard_with_token", {
           p_session_id: sessionId,
@@ -258,304 +316,257 @@ async function executeTool(
           p_agent_role: "orchestrator",
           p_entry_type: entryType,
           p_content: content,
-          p_iteration: 0,
+          p_iteration: 0, // Will be set by caller
           p_confidence: confidence,
           p_target_agent: targetAgent,
           p_evidence: null,
         });
-        await logActivity("orchestrator", "blackboard_write", `Blackboard: ${entryType}`, content?.slice(0, 200));
-        return { success: true, result: { written: true } };
+        
+        return { success: true, result: { entryType, contentLength: content.length } };
       }
-
+      
       case "read_blackboard": {
-        const { entryTypes, limit = 20 } = params;
-        let entries = await rpc("get_audit_blackboard_with_token", { p_session_id: sessionId, p_token: shareToken });
-        if (entryTypes?.length) entries = entries?.filter((e: any) => entryTypes.includes(e.entry_type));
-        return { success: true, result: (entries || []).slice(0, limit) };
+        const entryTypes = params.entryTypes || params.entry_types || null;
+        const limit = params.limit || 50;
+        
+        const { data: entries } = await supabase.rpc("get_audit_blackboard_with_token", {
+          p_session_id: sessionId,
+          p_token: shareToken,
+        });
+        
+        let filtered = entries || [];
+        if (entryTypes && Array.isArray(entryTypes) && entryTypes.length > 0) {
+          filtered = filtered.filter((e: any) => entryTypes.includes(e.entry_type));
+        }
+        
+        return { 
+          success: true, 
+          result: filtered.slice(0, limit).map((e: any) => ({
+            id: e.id,
+            type: e.entry_type,
+            content: e.content,
+            agent: e.agent_role,
+            iteration: e.iteration,
+            createdAt: e.created_at
+          }))
+        };
       }
-
+      
       case "create_concept": {
-        // Schema enforces: label, description, nodeType, sourceDataset, sourceElementIds
-        const { label, description, nodeType = "dataset1_concept", sourceDataset = "dataset1", sourceElementIds } = params;
+        const label = params.label || params.name || params.title;
+        const description = params.description || params.desc || "";
+        const sourceDataset = params.sourceDataset || params.source_dataset || "both";
+        let sourceElementIds = params.sourceElementIds || params.source_element_ids || [];
         
-        if (!sourceElementIds || sourceElementIds.length === 0) {
-          return { success: false, error: "sourceElementIds is REQUIRED - concepts must link to source artifacts", result: null };
+        if (!label) {
+          return { success: false, result: null, error: "Label is required for create_concept" };
         }
         
-        // Resolve partial IDs to full UUIDs
-        const resolvedIds: string[] = [];
-        for (const partialId of sourceElementIds) {
-          const resolved = resolveElementId(partialId) || partialId;
-          resolvedIds.push(resolved);
-        }
+        // Resolve partial IDs
+        sourceElementIds = sourceElementIds.map((id: string) => resolveElementId(id) || id);
         
-        console.log(`[create_concept] label=${label}, resolvedIds=`, resolvedIds);
-        
-        await rpc("upsert_audit_graph_node_with_token", {
+        const data = await rpc("insert_audit_graph_node_with_token", {
           p_session_id: sessionId,
           p_token: shareToken,
           p_label: label,
           p_description: description,
-          p_node_type: nodeType,
+          p_node_type: "concept",
           p_source_dataset: sourceDataset,
-          p_source_element_ids: resolvedIds,
+          p_source_element_ids: sourceElementIds,
           p_created_by_agent: "orchestrator",
+          p_color: sourceDataset === "dataset1" ? "#3b82f6" : sourceDataset === "dataset2" ? "#22c55e" : "#a855f7",
+          p_size: 30,
+          p_metadata: {},
         });
-        await logActivity("orchestrator", "node_insert", `Created concept: ${label}`, description?.slice(0, 200));
-        return { success: true, result: { created: label } };
+        
+        return { success: true, result: { nodeId: data.id, label, sourceDataset, sourceElementIds } };
       }
-
+      
       case "link_concepts": {
-        // Schema enforces: sourceNodeId, targetNodeId, edgeType, label?
-        const { sourceNodeId, targetNodeId, edgeType, label } = params;
+        const sourceNodeId = params.sourceNodeId || params.source || params.from;
+        const targetNodeId = params.targetNodeId || params.target || params.to;
+        const edgeType = params.edgeType || params.type || params.edge_type || "relates_to";
+        const label = params.label || null;
         
-        const nodes = await rpc("get_audit_graph_nodes_with_token", { p_session_id: sessionId, p_token: shareToken });
+        if (!sourceNodeId || !targetNodeId) {
+          return { success: false, result: null, error: "sourceNodeId and targetNodeId are required" };
+        }
         
-        // Enhanced resolver: check graph node ID first, then source_element_ids
-        const resolveNodeId = (idOrPrefix: string): string | null => {
-          if (!idOrPrefix) return null;
+        // Helper to resolve node IDs - supports graph node IDs, source element IDs, or labels
+        const resolveNodeId = async (idOrLabel: string): Promise<string | null> => {
+          const { data: nodes } = await supabase.rpc("get_audit_graph_nodes_with_token", {
+            p_session_id: sessionId,
+            p_token: shareToken,
+          });
           
-          // 1. Direct match on graph node ID (exact or prefix)
-          const directMatch = nodes?.find((n: any) => n.id === idOrPrefix || n.id.startsWith(idOrPrefix));
+          if (!nodes || nodes.length === 0) return null;
+          
+          // Try direct match
+          const directMatch = nodes.find((n: any) => n.id === idOrLabel);
           if (directMatch) return directMatch.id;
           
-          // 2. Check if it's a source_element_id in any node
-          const bySourceElement = nodes?.find((n: any) => 
-            n.source_element_ids?.some((sid: string) => sid === idOrPrefix || sid.startsWith(idOrPrefix))
-          );
-          if (bySourceElement) return bySourceElement.id;
+          // Try partial ID match (8-char prefix)
+          const partialMatch = nodes.find((n: any) => n.id.startsWith(idOrLabel));
+          if (partialMatch) return partialMatch.id;
           
-          // 3. Try matching by label (case-insensitive partial match)
-          const byLabel = nodes?.find((n: any) => 
-            n.label?.toLowerCase().includes(idOrPrefix.toLowerCase())
+          // Try source_element_ids match
+          const sourceMatch = nodes.find((n: any) => 
+            n.source_element_ids?.some((sid: string) => sid === idOrLabel || sid.startsWith(idOrLabel))
           );
-          if (byLabel) return byLabel.id;
+          if (sourceMatch) return sourceMatch.id;
+          
+          // Try label match
+          const labelMatch = nodes.find((n: any) => 
+            n.label?.toLowerCase() === idOrLabel?.toLowerCase()
+          );
+          if (labelMatch) return labelMatch.id;
           
           return null;
         };
         
-        const srcId = resolveNodeId(sourceNodeId);
-        const tgtId = resolveNodeId(targetNodeId);
+        const resolvedSource = await resolveNodeId(sourceNodeId);
+        const resolvedTarget = await resolveNodeId(targetNodeId);
         
-        if (!srcId || !tgtId) {
-          // Provide helpful error with available nodes
-          const availableNodes = (nodes || []).slice(0, 20).map((n: any) => 
-            `${n.id.slice(0,8)}: "${n.label}" (sources: ${(n.source_element_ids || []).slice(0,2).map((s: string) => s.slice(0,8)).join(',')})`
-          ).join('; ');
-          return { 
-            success: false, 
-            error: `Could not resolve node IDs. src=${sourceNodeId}${srcId ? '✓' : '✗'}, tgt=${targetNodeId}${tgtId ? '✓' : '✗'}. Available nodes: ${availableNodes}`, 
-            result: null 
-          };
+        if (!resolvedSource) {
+          return { success: false, result: null, error: `Could not find source node: ${sourceNodeId}` };
+        }
+        if (!resolvedTarget) {
+          return { success: false, result: null, error: `Could not find target node: ${targetNodeId}` };
         }
         
-        await rpc("insert_audit_graph_edge_with_token", {
+        const data = await rpc("insert_audit_graph_edge_with_token", {
           p_session_id: sessionId,
           p_token: shareToken,
-          p_source_node_id: srcId,
-          p_target_node_id: tgtId,
+          p_source_node_id: resolvedSource,
+          p_target_node_id: resolvedTarget,
           p_edge_type: edgeType,
-          p_label: label || null,
+          p_label: label,
+          p_weight: 1.0,
           p_created_by_agent: "orchestrator",
+          p_metadata: {},
         });
-        await logActivity("orchestrator", "edge_insert", `Linked: ${sourceNodeId} -> ${targetNodeId}`, `Type: ${edgeType}`);
-        return { success: true, result: { linked: true, sourceResolved: srcId, targetResolved: tgtId } };
+        
+        return { success: true, result: { edgeId: data.id, source: resolvedSource, target: resolvedTarget, type: edgeType } };
       }
-
+      
       case "record_tesseract_cell": {
-        // Schema enforces: elementId, elementLabel?, step, stepLabel?, polarity, criticality?, evidenceSummary
-        const { elementId, elementLabel, step, stepLabel, polarity, criticality, evidenceSummary } = params;
+        const elementId = params.elementId || params.element_id || params.id;
+        const elementLabel = params.elementLabel || params.element_label || params.label || "";
+        const step = params.step || 1;
+        const stepLabel = params.stepLabel || params.step_label || "";
+        const polarity = params.polarity ?? 0;
+        const criticality = params.criticality || "info";
+        const evidenceSummary = params.evidenceSummary || params.evidence_summary || params.evidence || "";
         
-        // Resolve partial element ID
+        // Resolve element ID
         const resolvedElementId = resolveElementId(elementId) || elementId;
-        const elementIndex = problemShape.dataset1.elements.findIndex(e => e.id === resolvedElementId);
-        
-        console.log(`[record_tesseract_cell] elementId=${resolvedElementId}, step=${step}, polarity=${polarity}`);
         
         await rpc("upsert_audit_tesseract_cell_with_token", {
           p_session_id: sessionId,
           p_token: shareToken,
-          p_x_index: elementIndex >= 0 ? elementIndex : 0,
           p_x_element_id: resolvedElementId,
+          p_x_element_label: elementLabel,
           p_x_element_type: problemShape.dataset1.type,
-          p_x_element_label: elementLabel || null,
+          p_x_index: 0,
           p_y_step: step,
-          p_y_step_label: stepLabel || null,
+          p_y_step_label: stepLabel,
           p_z_polarity: polarity,
-          p_z_criticality: criticality || null,
+          p_z_criticality: criticality,
           p_evidence_summary: evidenceSummary,
+          p_evidence_refs: null,
           p_contributing_agents: ["orchestrator"],
         });
-        await logActivity("orchestrator", "tesseract_cell", `Tesseract: ${elementLabel || resolvedElementId}`, `Step ${step}, Polarity: ${polarity}`);
-        return { success: true, result: { recorded: true } };
+        
+        return { success: true, result: { elementId: resolvedElementId, step, polarity, criticality } };
       }
-
+      
       case "finalize_venn": {
-        const { uniqueToD1, aligned, uniqueToD2, summary } = params;
+        const uniqueToD1 = params.uniqueToD1 || params.unique_to_d1 || params.gaps || [];
+        const aligned = params.aligned || params.shared || params.coverage || [];
+        const uniqueToD2 = params.uniqueToD2 || params.unique_to_d2 || params.orphans || [];
+        const summary = params.summary || {};
         
         const vennResult = {
-          unique_to_d1: (uniqueToD1 || []).map((item: any) => ({
-            id: item.id,
-            label: item.label,
-            category: "unique_d1",
-            criticality: item.criticality || "major",
-            evidence: item.evidence,
-          })),
-          aligned: (aligned || []).map((item: any) => ({
-            id: item.id,
-            label: item.label,
-            category: "aligned",
-            criticality: item.criticality || "info",
-            evidence: item.evidence,
-            sourceElement: item.sourceElement,
-            targetElement: item.targetElement,
-          })),
-          unique_to_d2: (uniqueToD2 || []).map((item: any) => ({
-            id: item.id,
-            label: item.label,
-            category: "unique_d2",
-            criticality: item.criticality || "minor",
-            evidence: item.evidence,
-          })),
+          uniqueToD1,
+          aligned,
+          uniqueToD2,
           summary: {
-            total_d1_coverage: summary?.totalD1Coverage || 0,
-            total_d2_coverage: summary?.totalD2Coverage || 0,
-            alignment_score: summary?.alignmentScore || 0,
+            totalD1Coverage: summary.totalD1Coverage || (aligned.length / Math.max(problemShape.dataset1.count, 1) * 100),
+            totalD2Coverage: summary.totalD2Coverage || (aligned.length / Math.max(problemShape.dataset2.count, 1) * 100),
+            alignmentScore: summary.alignmentScore || 0,
+            gaps: uniqueToD1.length,
+            orphans: uniqueToD2.length,
+            aligned: aligned.length,
           },
+          generatedAt: new Date().toISOString(),
         };
         
         await rpc("update_audit_session_with_token", {
           p_session_id: sessionId,
           p_token: shareToken,
           p_venn_result: vennResult,
+          p_status: "completed",
+          p_phase: "synthesis",
         });
-        
-        await logActivity("orchestrator", "success", "Venn Diagram Finalized", 
-          `D1 Coverage: ${vennResult.summary.total_d1_coverage}%, Alignment: ${vennResult.summary.alignment_score}%`);
         
         return { success: true, result: vennResult };
       }
-
+      
       default:
-        return { success: false, error: `Unknown tool: ${toolName}`, result: null };
+        return { success: false, result: null, error: `Unknown tool: ${toolName}` };
     }
   } catch (err) {
-    console.error(`Tool execution error [${toolName}]:`, err);
-    return { success: false, error: String(err), result: null };
+    console.error(`Tool ${toolName} error:`, err);
+    return { success: false, result: null, error: String(err) };
   }
 }
 
-// ==================== CLAUDE RESPONSE TOOL FOR STRUCTURED OUTPUT ====================
-// Explicit parameter schemas to enforce exact parameter names - Claude cannot invent names
+// ==================== CLAUDE RESPONSE TOOL SCHEMA ====================
 
 function getClaudeResponseTool() {
-  // Define explicit params schema matching ORCHESTRATOR_TOOLS exactly
   const toolParamsSchema = {
     type: "object",
     properties: {
-      // read_dataset_item params
       dataset: { type: "string", enum: ["dataset1", "dataset2"], description: "Which dataset to read from" },
       itemId: { type: "string", description: "The item ID or 8-char prefix to read" },
-      
-      // query_knowledge_graph params
-      filter: { type: "string", enum: ["all", "dataset1_only", "dataset2_only", "shared", "orphans"], description: "Filter nodes by source dataset" },
+      filter: { type: "string", enum: ["all", "dataset1_only", "dataset2_only", "shared", "orphans"], description: "Filter nodes by source" },
       nodeType: { type: "string", description: "Filter by node type" },
-      limit: { type: "integer", description: "Max results to return" },
-      
-      // get_concept_links params
+      limit: { type: "integer", description: "Max results" },
       nodeId: { type: "string", description: "The knowledge graph node ID" },
-      
-      // write_blackboard params
-      entryType: { type: "string", enum: ["plan", "finding", "observation", "question", "conclusion", "tool_result"], description: "Type of blackboard entry" },
-      content: { type: "string", description: "The content to write" },
-      confidence: { type: "number", description: "Confidence level 0.0-1.0" },
-      targetAgent: { type: "string", description: "Optional target perspective" },
-      
-      // read_blackboard params
-      entryTypes: { type: "array", items: { type: "string" }, description: "Filter to specific entry types" },
-      
-      // create_concept params
-      label: { type: "string", description: "Short label for the concept" },
-      description: { type: "string", description: "Detailed description of the concept" },
-      sourceDataset: { type: "string", enum: ["dataset1", "dataset2", "both"], description: "Which dataset this concept originates from" },
-      sourceElementIds: { type: "array", items: { type: "string" }, description: "REQUIRED: UUIDs or 8-char prefixes of source artifacts" },
-      
-      // link_concepts params
-      sourceNodeId: { type: "string", description: "Source node ID" },
-      targetNodeId: { type: "string", description: "Target node ID" },
-      edgeType: { type: "string", enum: ["relates_to", "implements", "depends_on", "conflicts_with", "supports", "covers"], description: "Relationship type" },
-      
-      // record_tesseract_cell params
-      elementId: { type: "string", description: "Dataset 1 element ID" },
-      elementLabel: { type: "string", description: "Human-readable label" },
+      entryType: { type: "string", enum: ["plan", "finding", "observation", "question", "conclusion", "tool_result"], description: "Blackboard entry type" },
+      content: { type: "string", description: "Content to write" },
+      confidence: { type: "number", description: "Confidence 0-1" },
+      targetAgent: { type: "string", description: "Target perspective" },
+      entryTypes: { type: "array", items: { type: "string" }, description: "Entry types to filter" },
+      label: { type: "string", description: "Concept label" },
+      description: { type: "string", description: "Concept description" },
+      sourceDataset: { type: "string", enum: ["dataset1", "dataset2", "both"], description: "Which dataset this originates from" },
+      sourceElementIds: { type: "array", items: { type: "string" }, description: "Source artifact IDs (required for create_concept)" },
+      sourceNodeId: { type: "string", description: "Source node (graph node ID, source element ID, or label)" },
+      targetNodeId: { type: "string", description: "Target node (graph node ID, source element ID, or label)" },
+      edgeType: { type: "string", enum: ["relates_to", "implements", "depends_on", "conflicts_with", "supports", "covers"], description: "Edge type" },
+      elementId: { type: "string", description: "Dataset 1 element ID for tesseract" },
+      elementLabel: { type: "string", description: "Element label" },
       step: { type: "integer", description: "Analysis step 1-5" },
-      stepLabel: { type: "string", description: "Label for this step" },
+      stepLabel: { type: "string", description: "Step label" },
       polarity: { type: "number", description: "Alignment score -1 to +1" },
-      criticality: { type: "string", enum: ["critical", "major", "minor", "info"], description: "Severity level" },
-      evidenceSummary: { type: "string", description: "Summary of evidence" },
-      
-      // finalize_venn params
-      uniqueToD1: { 
-        type: "array", 
-        items: { 
-          type: "object", 
-          properties: {
-            id: { type: "string" },
-            label: { type: "string" },
-            criticality: { type: "string" },
-            evidence: { type: "string" }
-          }
-        },
-        description: "Elements unique to Dataset 1 (gaps)" 
-      },
-      aligned: { 
-        type: "array", 
-        items: { 
-          type: "object",
-          properties: {
-            id: { type: "string" },
-            label: { type: "string" },
-            criticality: { type: "string" },
-            evidence: { type: "string" },
-            sourceElement: { type: "string" },
-            targetElement: { type: "string" }
-          }
-        },
-        description: "Elements present in both datasets" 
-      },
-      uniqueToD2: { 
-        type: "array", 
-        items: { 
-          type: "object",
-          properties: {
-            id: { type: "string" },
-            label: { type: "string" },
-            criticality: { type: "string" },
-            evidence: { type: "string" }
-          }
-        },
-        description: "Elements unique to Dataset 2 (orphans)" 
-      },
-      summary: { 
-        type: "object",
-        properties: {
-          totalD1Coverage: { type: "number" },
-          totalD2Coverage: { type: "number" },
-          alignmentScore: { type: "number" }
-        },
-        description: "Summary statistics" 
-      },
+      criticality: { type: "string", enum: ["critical", "major", "minor", "info"], description: "Severity" },
+      evidenceSummary: { type: "string", description: "Evidence summary" },
+      uniqueToD1: { type: "array", items: { type: "object" }, description: "Elements unique to D1 (gaps)" },
+      aligned: { type: "array", items: { type: "object" }, description: "Elements in both datasets" },
+      uniqueToD2: { type: "array", items: { type: "object" }, description: "Elements unique to D2 (orphans)" },
+      summary: { type: "object", description: "Summary statistics" },
     },
     additionalProperties: false,
   };
 
   return {
     name: "respond_with_actions",
-    description: "Return your reasoning, tool calls, and continuation flag. You MUST use this tool to respond.",
+    description: "Return your reasoning and tool calls. You MUST use this tool to respond.",
     input_schema: {
       type: "object",
       properties: {
-        thinking: { type: "string", description: "Your internal reasoning about what to do next" },
+        thinking: { type: "string", description: "Your reasoning about what to do next" },
         perspective: { 
           type: "string",
           enum: ["architect", "security", "business", "developer", "user"],
@@ -571,213 +582,21 @@ function getClaudeResponseTool() {
                 enum: ["read_dataset_item", "query_knowledge_graph", "get_concept_links", 
                        "write_blackboard", "read_blackboard", "create_concept", 
                        "link_concepts", "record_tesseract_cell", "finalize_venn"],
-                description: "Name of the tool to invoke" 
+                description: "Tool to invoke" 
               },
               params: toolParamsSchema,
-              rationale: { type: "string", description: "Why you are calling this tool" },
+              rationale: { type: "string", description: "Why you're calling this tool" },
             },
             required: ["tool", "params"],
             additionalProperties: false,
           },
         },
-        continueAnalysis: { type: "boolean", description: "Set to true if more iterations needed, false if done" },
+        continueAnalysis: { type: "boolean", description: "true to continue, false only after finalize_venn" },
       },
       required: ["thinking", "toolCalls", "continueAnalysis"],
       additionalProperties: false,
     },
   };
-}
-
-// ==================== LLM CALL WITH STRUCTURED OUTPUT ====================
-
-// For Claude, we need to track tool_use IDs to send proper tool_result responses
-interface ConversationTurn {
-  role: "user" | "assistant";
-  content: string;
-  toolUseId?: string; // For Claude: the tool_use ID from assistant responses
-}
-
-async function callLLMWithConversation(
-  apiEndpoint: string,
-  apiKey: string,
-  model: string,
-  systemPrompt: string,
-  turns: ConversationTurn[],
-  logActivity: (agentRole: string | null, activityType: string, title: string, content?: string, metadata?: Record<string, any>) => Promise<void>,
-  broadcast: (event: string, payload: any) => Promise<void>
-): Promise<{ response: OrchestratorResponse; rawContent: string; toolUseId?: string }> {
-  
-  await logActivity("orchestrator", "llm_call", "Calling LLM...", `Model: ${model}, Turns: ${turns.length}`);
-  
-  let rawText = "";
-  let returnedToolUseId: string | undefined;
-  
-  if (model.startsWith("gemini")) {
-    // Convert turns to Gemini format (simple text messages)
-    const geminiContents = turns.map(t => ({
-      role: t.role === "assistant" ? "model" : "user",
-      parts: [{ text: t.content }]
-    }));
-    
-    const requestBody = {
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: geminiContents,
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: getGeminiFunctionDeclarations(),
-        maxOutputTokens: 32768,
-        temperature: 0.7,
-      },
-    };
-
-    const response = await fetch(`${apiEndpoint}?key=${apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody),
-    });
-    
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Gemini API error: ${errText}`);
-    }
-    
-    const data = await response.json();
-    rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-    
-  } else if (model.startsWith("claude")) {
-    // Convert turns to Claude format with proper tool_use/tool_result structure
-    const claudeMessages: any[] = [];
-    
-    for (let i = 0; i < turns.length; i++) {
-      const turn = turns[i];
-      
-      if (turn.role === "user") {
-        // Check if previous turn was an assistant with a tool_use
-        const prevTurn = i > 0 ? turns[i - 1] : null;
-        if (prevTurn?.role === "assistant" && prevTurn.toolUseId) {
-          // This user message is a tool_result for the previous tool_use
-          claudeMessages.push({
-            role: "user",
-            content: [{
-              type: "tool_result",
-              tool_use_id: prevTurn.toolUseId,
-              content: turn.content
-            }]
-          });
-        } else {
-          // Regular user message
-          claudeMessages.push({
-            role: "user",
-            content: turn.content
-          });
-        }
-      } else {
-        // Assistant message - format as tool_use ONLY if we have a toolUseId
-        if (turn.toolUseId) {
-          try {
-            const parsed = JSON.parse(turn.content);
-            claudeMessages.push({
-              role: "assistant",
-              content: [{
-                type: "tool_use",
-                id: turn.toolUseId,
-                name: "respond_with_actions",
-                input: parsed
-              }]
-            });
-          } catch {
-            // If not valid JSON, skip this turn entirely
-            console.log("Skipping assistant turn with invalid JSON");
-          }
-        } else {
-          // No toolUseId - this was a text response, skip it in Claude conversation
-          // Claude requires tool_use/tool_result pairs, so we can't include plain text assistant messages
-          console.log("Skipping assistant turn without toolUseId");
-        }
-      }
-    }
-    
-    // Log the full request payload for debugging
-    const requestPayload = {
-      model,
-      max_tokens: 32768,
-      system: systemPrompt,
-      messages: claudeMessages,
-      tools: [getClaudeResponseTool()],
-      tool_choice: { type: "tool", name: "respond_with_actions" },
-    };
-    
-    console.log("Claude request payload:", JSON.stringify(requestPayload, null, 2).slice(0, 5000));
-    await logActivity("orchestrator", "llm_request", "Full LLM Request Payload", 
-      JSON.stringify({ messageCount: claudeMessages.length, messages: claudeMessages }, null, 2));
-    
-    const response = await fetch(apiEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-beta": "prompt-caching-2024-07-31",
-      },
-      body: JSON.stringify(requestPayload),
-    });
-    
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error("Claude API error response:", errText);
-      throw new Error(`Claude API error: ${errText}`);
-    }
-    
-    const data = await response.json();
-    
-    // Log the full response for debugging
-    console.log("Claude full response:", JSON.stringify(data, null, 2).slice(0, 3000));
-    await logActivity("orchestrator", "llm_response_full", "Full LLM Response", 
-      JSON.stringify(data, null, 2).slice(0, 5000));
-    
-    // Extract from tool_use content block
-    const toolUseBlock = data.content?.find((c: any) => c.type === "tool_use");
-    if (toolUseBlock?.input) {
-      rawText = JSON.stringify(toolUseBlock.input);
-      returnedToolUseId = toolUseBlock.id; // Save the tool_use ID for the next turn
-    } else {
-      const textBlock = data.content?.find((c: any) => c.type === "text");
-      rawText = textBlock?.text || "{}";
-      console.log("Warning: No tool_use block found in Claude response, got text:", rawText.slice(0, 500));
-    }
-    
-  } else {
-    // Grok - convert to OpenAI-style messages
-    const grokMessages = [
-      { role: "system", content: systemPrompt },
-      ...turns.map(t => ({ role: t.role, content: t.content }))
-    ];
-    
-    const response = await fetch(apiEndpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model,
-        messages: grokMessages,
-        response_format: getGrokToolSchema(),
-        max_tokens: 32768,
-        temperature: 0.7,
-      }),
-    });
-    
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Grok API error: ${errText}`);
-    }
-    
-    const data = await response.json();
-    rawText = data.choices?.[0]?.message?.content || "{}";
-  }
-  
-  await logActivity("orchestrator", "response", "LLM Response", rawText.slice(0, 500), { rawLength: rawText.length });
-  await broadcast("llm_response", { length: rawText.length });
-  
-  return { response: parseOrchestratorResponse(rawText), rawContent: rawText, toolUseId: returnedToolUseId };
 }
 
 // ==================== BUILD PROBLEM SHAPE ====================
@@ -856,6 +675,62 @@ async function buildProblemShape(
   };
 }
 
+// ==================== BUILD CONTEXT SUMMARY ====================
+
+async function buildContextSummary(
+  supabase: any,
+  sessionId: string,
+  shareToken: string,
+  iteration: number,
+  currentPhase: string
+): Promise<string> {
+  // Get current blackboard entries (last 10)
+  const { data: blackboard } = await supabase.rpc("get_audit_blackboard_with_token", {
+    p_session_id: sessionId,
+    p_token: shareToken,
+  });
+  
+  // Get graph stats
+  const { data: nodes } = await supabase.rpc("get_audit_graph_nodes_with_token", {
+    p_session_id: sessionId,
+    p_token: shareToken,
+  });
+  
+  const { data: edges } = await supabase.rpc("get_audit_graph_edges_with_token", {
+    p_session_id: sessionId,
+    p_token: shareToken,
+  });
+  
+  const recentBlackboard = (blackboard || []).slice(-10);
+  const blackboardSummary = recentBlackboard.length > 0
+    ? recentBlackboard.map((e: any) => `[${e.entry_type}] ${e.content.slice(0, 200)}`).join("\n")
+    : "(empty - use write_blackboard to record your thoughts!)";
+  
+  const nodeCount = (nodes || []).length;
+  const edgeCount = (edges || []).length;
+  const d1Nodes = (nodes || []).filter((n: any) => n.source_dataset === "dataset1").length;
+  const d2Nodes = (nodes || []).filter((n: any) => n.source_dataset === "dataset2").length;
+  const sharedNodes = (nodes || []).filter((n: any) => n.source_dataset === "both").length;
+  
+  return `## CURRENT STATE (Iteration ${iteration}, Phase: ${currentPhase})
+
+### Knowledge Graph
+- Total Nodes: ${nodeCount} (D1: ${d1Nodes}, D2: ${d2Nodes}, Shared: ${sharedNodes})
+- Total Edges: ${edgeCount}
+
+### Recent Blackboard Entries
+${blackboardSummary}
+
+### Your Next Steps
+Based on phase ${currentPhase}, you should:
+${currentPhase === "graph_building" ? "- Read more dataset items\n- Create concept nodes\n- Link related concepts" : ""}
+${currentPhase === "gap_analysis" ? "- Query graph for gaps (dataset1_only)\n- Query graph for orphans (dataset2_only)\n- Record findings to blackboard" : ""}
+${currentPhase === "deep_analysis" ? "- Record tesseract cells for D1 elements\n- Assess coverage quality\n- Write conclusions" : ""}
+${currentPhase === "synthesis" ? "- Review blackboard findings\n- Call finalize_venn with your results\n- Set continueAnalysis=false" : ""}
+
+CALL YOUR TOOLS NOW!`;
+}
+
 // ==================== MAIN HANDLER ====================
 
 serve(async (req) => {
@@ -873,7 +748,7 @@ serve(async (req) => {
     });
 
     const { sessionId, projectId, shareToken }: AuditRequest = await req.json();
-    console.log("Starting audit orchestrator v2:", { sessionId, projectId });
+    console.log("Starting audit orchestrator v3:", { sessionId, projectId });
 
     await supabase.rpc("set_share_token", { token: shareToken });
 
@@ -934,7 +809,7 @@ serve(async (req) => {
           p_agent_role: agentRole,
           p_activity_type: activityType,
           p_title: title,
-          p_content: content || null,
+          p_content: content || null,  // NO TRUNCATION - full content
           p_metadata: metadata || {},
         });
         await broadcast("activity", { type: activityType, title });
@@ -974,7 +849,15 @@ serve(async (req) => {
     const d1Summary = problemShape.dataset1.elements.slice(0, 50).map(e => `- [${e.id.slice(0,8)}] ${e.label}`).join("\n");
     const d2Summary = problemShape.dataset2.elements.slice(0, 50).map(e => `- [${e.id.slice(0,8)}] ${e.label}`).join("\n");
 
-    const initialPrompt = `## Dataset 1 Elements (${problemShape.dataset1.type}) - THE SOURCE OF TRUTH:
+    // The system prompt (sent to Claude separately)
+    const systemPrompt = getSystemPrompt(problemShape);
+
+    // Initial user message with full dataset listing
+    const initialUserMessage = `## YOUR TASK
+
+Analyze these two datasets and produce a Venn diagram showing coverage, gaps, and orphans.
+
+## Dataset 1 Elements (${problemShape.dataset1.type}) - THE SOURCE OF TRUTH:
 ${d1Summary}
 ${problemShape.dataset1.count > 50 ? `... and ${problemShape.dataset1.count - 50} more` : ""}
 
@@ -982,18 +865,17 @@ ${problemShape.dataset1.count > 50 ? `... and ${problemShape.dataset1.count - 50
 ${d2Summary}
 ${problemShape.dataset2.count > 50 ? `... and ${problemShape.dataset2.count - 50} more` : ""}
 
-## YOUR FIRST ACTION:
+## YOUR FIRST ACTIONS:
 1. Call write_blackboard with entryType="plan" to record your analysis strategy
-2. Then call read_dataset_item for MULTIPLE Dataset 1 elements (batch 5-10 calls)
+2. Call read_dataset_item for MULTIPLE Dataset 1 elements (batch 5-10 calls)
 3. Call create_concept for major themes you identify
 
 START NOW - call your tools!`;
 
-    // Proper multi-turn conversation array with tool_use ID tracking
-    const conversationTurns: ConversationTurn[] = [
-      { role: "user", content: initialPrompt }
-    ];
-    let lastToolUseId: string | undefined;
+    // Claude conversation state - we maintain proper tool_use/tool_result pairing
+    // Format: [user_message, assistant_tool_use, user_tool_result, assistant_tool_use, ...]
+    const claudeMessages: ClaudeMessage[] = [];
+    let lastToolUseId: string | null = null;
 
     while (iteration < MAX_ITERATIONS && !analysisComplete) {
       iteration++;
@@ -1019,23 +901,178 @@ START NOW - call your tools!`;
         break;
       }
 
-      // Call LLM with multi-turn conversation
-      const systemPrompt = getOrchestratorSystemPrompt(problemShape, currentPhase);
-      const { response, rawContent, toolUseId } = await callLLMWithConversation(
-        apiEndpoint, apiKey, selectedModel,
-        systemPrompt, conversationTurns,
-        logActivity, broadcast
-      );
+      // BUILD THE USER MESSAGE FOR THIS ITERATION
+      let userMessageContent: string;
+      
+      if (iteration === 1) {
+        // First iteration: send the initial task message
+        userMessageContent = initialUserMessage;
+        claudeMessages.push({ role: "user", content: userMessageContent });
+      }
+      // For subsequent iterations, the user message (tool_result) was already added at end of previous iteration
+      
+      // Log what we're sending
+      await logActivity("orchestrator", "llm_request", `LLM Request (Iteration ${iteration})`, 
+        JSON.stringify({ 
+          systemPromptLength: systemPrompt.length,
+          messageCount: claudeMessages.length,
+          messages: claudeMessages 
+        }, null, 2)); // FULL payload, no truncation
+
+      // CALL CLAUDE
+      let response: OrchestratorResponse;
+      let toolUseId: string | null = null;
+      let rawContent: string = "";
+
+      if (selectedModel.startsWith("claude")) {
+        const requestPayload = {
+          model: selectedModel,
+          max_tokens: 32768,
+          system: systemPrompt,
+          messages: claudeMessages,
+          tools: [getClaudeResponseTool()],
+          tool_choice: { type: "tool", name: "respond_with_actions" },
+        };
+        
+        console.log("Claude request:", JSON.stringify(requestPayload, null, 2).slice(0, 5000));
+        
+        const apiResponse = await fetch(apiEndpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+            "anthropic-beta": "prompt-caching-2024-07-31",
+          },
+          body: JSON.stringify(requestPayload),
+        });
+        
+        if (!apiResponse.ok) {
+          const errText = await apiResponse.text();
+          console.error("Claude API error:", errText);
+          throw new Error(`Claude API error: ${errText}`);
+        }
+        
+        const data = await apiResponse.json();
+        
+        // Log full response (NO TRUNCATION)
+        await logActivity("orchestrator", "llm_response", `LLM Response (Iteration ${iteration})`, 
+          JSON.stringify(data, null, 2));
+        
+        // Extract the tool_use block
+        const toolUseBlock = data.content?.find((c: any) => c.type === "tool_use");
+        if (toolUseBlock?.input) {
+          rawContent = JSON.stringify(toolUseBlock.input);
+          toolUseId = toolUseBlock.id;
+          response = {
+            thinking: toolUseBlock.input.thinking || "",
+            perspective: toolUseBlock.input.perspective,
+            toolCalls: toolUseBlock.input.toolCalls || [],
+            continueAnalysis: toolUseBlock.input.continueAnalysis ?? true,
+          };
+        } else {
+          const textBlock = data.content?.find((c: any) => c.type === "text");
+          console.error("Claude returned text instead of tool_use:", textBlock?.text?.slice(0, 500));
+          response = {
+            thinking: textBlock?.text || "Claude did not use the tool",
+            toolCalls: [],
+            continueAnalysis: true,
+          };
+        }
+        
+      } else if (selectedModel.startsWith("gemini")) {
+        // Gemini: simple text messages
+        const geminiContents = claudeMessages.map(m => ({
+          role: m.role === "assistant" ? "model" : "user",
+          parts: [{ text: typeof m.content === "string" ? m.content : JSON.stringify(m.content) }]
+        }));
+        
+        const requestBody = {
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: geminiContents,
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: getGeminiFunctionDeclarations(),
+            maxOutputTokens: 32768,
+            temperature: 0.7,
+          },
+        };
+
+        const apiResponse = await fetch(`${apiEndpoint}?key=${apiKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+        });
+        
+        if (!apiResponse.ok) {
+          const errText = await apiResponse.text();
+          throw new Error(`Gemini API error: ${errText}`);
+        }
+        
+        const data = await apiResponse.json();
+        rawContent = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+        
+        await logActivity("orchestrator", "llm_response", `LLM Response (Iteration ${iteration})`, rawContent);
+        
+        response = parseOrchestratorResponse(rawContent);
+        
+      } else {
+        // Grok
+        const grokMessages = [
+          { role: "system", content: systemPrompt },
+          ...claudeMessages.map(m => ({ 
+            role: m.role, 
+            content: typeof m.content === "string" ? m.content : JSON.stringify(m.content) 
+          }))
+        ];
+        
+        const apiResponse = await fetch(apiEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify({
+            model: selectedModel,
+            messages: grokMessages,
+            response_format: getGrokToolSchema(),
+            max_tokens: 32768,
+            temperature: 0.7,
+          }),
+        });
+        
+        if (!apiResponse.ok) {
+          const errText = await apiResponse.text();
+          throw new Error(`Grok API error: ${errText}`);
+        }
+        
+        const data = await apiResponse.json();
+        rawContent = data.choices?.[0]?.message?.content || "{}";
+        
+        await logActivity("orchestrator", "llm_response", `LLM Response (Iteration ${iteration})`, rawContent);
+        
+        response = parseOrchestratorResponse(rawContent);
+      }
 
       console.log(`Response: thinking=${response.thinking.length}chars, toolCalls=${response.toolCalls.length}, continue=${response.continueAnalysis}, toolUseId=${toolUseId || 'none'}`);
 
-      // Only add assistant response to conversation history if we got a valid tool_use response
-      // This is critical for Claude - we can't have assistant messages without tool_use IDs
-      if (toolUseId) {
-        conversationTurns.push({ role: "assistant", content: rawContent, toolUseId });
+      // ADD ASSISTANT RESPONSE TO CONVERSATION (for Claude, as tool_use block)
+      if (selectedModel.startsWith("claude") && toolUseId) {
+        claudeMessages.push({
+          role: "assistant",
+          content: [{
+            type: "tool_use",
+            id: toolUseId,
+            name: "respond_with_actions",
+            input: {
+              thinking: response.thinking,
+              perspective: response.perspective,
+              toolCalls: response.toolCalls,
+              continueAnalysis: response.continueAnalysis,
+            }
+          }]
+        });
         lastToolUseId = toolUseId;
-      } else {
-        console.log("Skipping conversation turn - no toolUseId returned (Claude returned text instead of tool_use)");
+      } else if (!selectedModel.startsWith("claude")) {
+        // For Gemini/Grok, use simple text
+        claudeMessages.push({ role: "assistant", content: rawContent });
       }
 
       // Log thinking
@@ -1045,24 +1082,22 @@ START NOW - call your tools!`;
           response.thinking);
       }
 
-      // Handle empty tool calls - prompt LLM to actually use tools
+      // EXECUTE TOOL CALLS
+      let toolResults = "";
+      let successCount = 0;
+      let failureCount = 0;
+      const failedTools: string[] = [];
+
       if (response.toolCalls.length === 0) {
         consecutiveEmptyToolCalls++;
         console.log(`Warning: No tool calls in iteration ${iteration} (consecutive: ${consecutiveEmptyToolCalls})`);
         
-        // CRITICAL: If we added an assistant turn with toolUseId, we MUST add a tool_result
-        // Claude requires tool_result immediately after every tool_use
-        if (toolUseId) {
-          let nudgeMessage = `## Tool Result: You returned an empty toolCalls array in iteration ${iteration}.
-You MUST include actual tool calls in the toolCalls array. Current phase: ${currentPhase}.`;
-          
-          if (consecutiveEmptyToolCalls >= 3) {
-            nudgeMessage += `
+        toolResults = `## WARNING: You did not call any tools in iteration ${iteration}!
+You MUST call at least one tool every iteration. Current phase: ${currentPhase}.
 
-## WARNING: ${consecutiveEmptyToolCalls} consecutive empty responses!
-Available tools you MUST use:
+Available tools:
 - write_blackboard: Record your findings (USE THIS!)
-- read_dataset_item: Read more dataset elements  
+- read_dataset_item: Read dataset elements
 - create_concept: Create knowledge graph nodes
 - link_concepts: Connect existing nodes
 - query_knowledge_graph: Check current graph state
@@ -1070,85 +1105,88 @@ Available tools you MUST use:
 - finalize_venn: Complete the analysis
 
 CALL YOUR TOOLS NOW!`;
-          }
-          
-          if (consecutiveEmptyToolCalls >= 5) {
-            nudgeMessage += `
 
-## FINAL WARNING: Analysis will terminate if you don't call tools!
-If you're done, call finalize_venn. Otherwise, use the tools above.`;
-          }
-          
-          conversationTurns.push({ role: "user", content: nudgeMessage });
-        }
-        
         if (consecutiveEmptyToolCalls >= 8) {
-          console.log("Too many iterations without tool calls (8), forcing completion");
+          console.log("Too many empty tool calls, forcing completion");
           await logActivity("orchestrator", "warning", "Analysis terminated", 
             `Stopped after ${consecutiveEmptyToolCalls} consecutive empty tool calls`);
           break;
         }
-        continue;
-      }
-      
-      consecutiveEmptyToolCalls = 0; // Reset on successful tool calls
-
-      // Execute tool calls
-      let toolResults = "";
-      let successCount = 0;
-      let failureCount = 0;
-      const failedTools: string[] = [];
-      
-      for (const toolCall of response.toolCalls) {
-        await logActivity("orchestrator", "tool_call", `Tool: ${toolCall.tool}`, 
-          JSON.stringify(toolCall.params, null, 2), { tool: toolCall.tool });
+      } else {
+        consecutiveEmptyToolCalls = 0;
         
-        const result = await executeTool(toolCall.tool, toolCall.params, toolContext);
-        
-        const resultSummary = result.success 
-          ? (typeof result.result === "object" ? JSON.stringify(result.result).slice(0, 300) : String(result.result))
-          : `Error: ${result.error}`;
-        
-        await logActivity("orchestrator", result.success ? "success" : "error", 
-          `${toolCall.tool}: ${result.success ? "Success" : "Failed"}`, resultSummary);
-        
-        if (result.success) {
-          successCount++;
-          toolResults += `\n\n✓ Tool: ${toolCall.tool}\nResult: ${resultSummary}`;
-        } else {
-          failureCount++;
-          failedTools.push(toolCall.tool);
-          toolResults += `\n\n✗ Tool: ${toolCall.tool} FAILED\nError: ${result.error}`;
-        }
-        
-        // Update phase based on tool calls
-        if (toolCall.tool === "finalize_venn" && result.success) {
-          currentPhase = "completed";
-          analysisComplete = true;
-        } else if (toolCall.tool === "record_tesseract_cell") {
-          currentPhase = "deep_analysis";
-        } else if (toolCall.tool === "query_knowledge_graph" && toolCall.params?.filter === "shared") {
-          currentPhase = "gap_analysis";
+        for (const toolCall of response.toolCalls) {
+          await logActivity("orchestrator", "tool_call", `Tool: ${toolCall.tool}`, 
+            JSON.stringify(toolCall.params, null, 2), { tool: toolCall.tool });
+          
+          const result = await executeTool(toolCall.tool, toolCall.params, toolContext);
+          
+          const resultSummary = result.success 
+            ? (typeof result.result === "object" ? JSON.stringify(result.result) : String(result.result))
+            : `Error: ${result.error}`;
+          
+          await logActivity("orchestrator", result.success ? "success" : "error", 
+            `${toolCall.tool}: ${result.success ? "Success" : "Failed"}`, resultSummary);
+          
+          if (result.success) {
+            successCount++;
+            toolResults += `\n\n✓ ${toolCall.tool}: ${resultSummary}`;
+          } else {
+            failureCount++;
+            failedTools.push(toolCall.tool);
+            toolResults += `\n\n✗ ${toolCall.tool} FAILED: ${result.error}`;
+          }
+          
+          // Update phase based on tool calls
+          if (toolCall.tool === "finalize_venn" && result.success) {
+            currentPhase = "completed";
+            analysisComplete = true;
+          } else if (toolCall.tool === "record_tesseract_cell") {
+            currentPhase = "deep_analysis";
+          } else if (toolCall.tool === "query_knowledge_graph" && toolCall.params?.filter === "shared") {
+            currentPhase = "gap_analysis";
+          }
         }
       }
 
-      // Update conversation with tool results and feedback as a new user message
-      if (toolResults) {
-        let feedback = `## Tool Results from Iteration ${iteration} (${successCount} succeeded, ${failureCount} failed):${toolResults}`;
-        
-        // Add guidance for failed tools
-        if (failureCount > 0) {
-          feedback += `\n\n## Tool Failures - Please Correct:`;
-          if (failedTools.includes("link_concepts")) {
-            feedback += `\n- link_concepts failed: Make sure you use graph node IDs (from create_concept results), not source element IDs directly. Check query_knowledge_graph to see available nodes.`;
-          }
-          if (failedTools.includes("create_concept")) {
-            feedback += `\n- create_concept failed: Ensure sourceElementIds contains valid element IDs from the datasets.`;
-          }
+      // BUILD USER MESSAGE FOR NEXT ITERATION (tool_result for Claude)
+      const contextSummary = await buildContextSummary(supabase, sessionId, shareToken, iteration, currentPhase);
+      
+      let nextUserMessage = `## Tool Results from Iteration ${iteration}`;
+      if (response.toolCalls.length > 0) {
+        nextUserMessage += ` (${successCount} succeeded, ${failureCount} failed)`;
+      }
+      nextUserMessage += `:${toolResults}
+
+${contextSummary}`;
+
+      // Add guidance for failed tools
+      if (failureCount > 0) {
+        nextUserMessage += `\n\n## Tool Failures - Please Correct:`;
+        if (failedTools.includes("link_concepts")) {
+          nextUserMessage += `\n- link_concepts: Use graph node IDs from create_concept results, or query_knowledge_graph to find existing nodes.`;
         }
-        
-        feedback += `\n\nContinue your analysis. Current phase: ${currentPhase}. What's your next step?`;
-        conversationTurns.push({ role: "user", content: feedback });
+        if (failedTools.includes("create_concept")) {
+          nextUserMessage += `\n- create_concept: Ensure sourceElementIds contains valid IDs from the datasets.`;
+        }
+      }
+
+      nextUserMessage += `\n\nContinue your analysis. What's your next step?`;
+
+      // Add to conversation
+      if (selectedModel.startsWith("claude") && lastToolUseId) {
+        // For Claude: wrap in tool_result
+        claudeMessages.push({
+          role: "user",
+          content: [{
+            type: "tool_result",
+            tool_use_id: lastToolUseId,
+            content: nextUserMessage
+          }]
+        });
+      } else {
+        // For Gemini/Grok: simple text
+        claudeMessages.push({ role: "user", content: nextUserMessage });
       }
 
       // Check if LLM says we're done
