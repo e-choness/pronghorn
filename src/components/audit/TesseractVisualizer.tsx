@@ -28,23 +28,43 @@ export function TesseractVisualizer({
   const [zoom, setZoom] = useState(1);
   const [showLabels, setShowLabels] = useState(true);
 
-  // Build grid structure from cells
+  // Build grid structure from cells - ensure we have proper x/y grid layout
   const { xElements, ySteps, cellMap, maxPolarity } = useMemo(() => {
     const xSet = new Map<number, { id: string; label: string; type: string }>();
     const ySet = new Map<number, string>();
     const cMap = new Map<string, TesseractCell>();
     let maxP = 1;
 
-    cells.forEach((cell) => {
-      xSet.set(cell.x_index, {
+    // Default analysis steps if none provided
+    const defaultSteps = [
+      { step: 1, label: "Identify" },
+      { step: 2, label: "Complete" },
+      { step: 3, label: "Correct" },
+      { step: 4, label: "Quality" },
+      { step: 5, label: "Integrate" },
+    ];
+
+    cells.forEach((cell, idx) => {
+      // Use x_index from cell, or fall back to index in array if all are 0
+      const xIndex = cell.x_index !== 0 ? cell.x_index : idx;
+      
+      xSet.set(xIndex, {
         id: cell.x_element_id,
-        label: cell.x_element_label || `Element ${cell.x_index}`,
+        label: cell.x_element_label || `Element ${xIndex + 1}`,
         type: cell.x_element_type,
       });
-      ySet.set(cell.y_step, cell.y_step_label || `Step ${cell.y_step}`);
-      cMap.set(`${cell.x_index}-${cell.y_step}`, cell);
+      
+      const stepLabel = cell.y_step_label || defaultSteps.find(s => s.step === cell.y_step)?.label || `Step ${cell.y_step}`;
+      ySet.set(cell.y_step, stepLabel);
+      
+      cMap.set(`${xIndex}-${cell.y_step}`, cell);
       maxP = Math.max(maxP, Math.abs(cell.z_polarity));
     });
+
+    // If no steps recorded, add defaults
+    if (ySet.size === 0) {
+      defaultSteps.forEach(s => ySet.set(s.step, s.label));
+    }
 
     return {
       xElements: Array.from(xSet.entries()).sort((a, b) => a[0] - b[0]),

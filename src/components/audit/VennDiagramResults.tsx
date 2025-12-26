@@ -54,15 +54,41 @@ export function VennDiagramResults({
     new Set(["aligned"])
   );
 
-  // Parse and validate venn result
+  // Parse and validate venn result - handle both camelCase and snake_case
   const result: VennResult | null = useMemo(() => {
     if (!vennResult) return null;
     try {
-      const parsed = vennResult as unknown as VennResult;
-      if (parsed.unique_to_d1 && parsed.aligned && parsed.unique_to_d2) {
-        return parsed;
-      }
-      return null;
+      const raw = vennResult as Record<string, any>;
+      
+      // Handle both naming conventions
+      const uniqueD1 = raw.unique_to_d1 || raw.uniqueToD1 || [];
+      const alignedItems = raw.aligned || [];
+      const uniqueD2 = raw.unique_to_d2 || raw.uniqueToD2 || [];
+      const summary = raw.summary || {};
+      
+      // Normalize summary to snake_case for display
+      const normalizedSummary = {
+        total_d1_coverage: summary.total_d1_coverage ?? summary.totalD1Coverage ?? 0,
+        total_d2_coverage: summary.total_d2_coverage ?? summary.totalD2Coverage ?? 0,
+        alignment_score: summary.alignment_score ?? summary.alignmentScore ?? 0,
+      };
+      
+      // Map items to ensure they have required fields
+      const mapItem = (item: any, category: string): VennItem => ({
+        id: item.id || item.elementId || crypto.randomUUID(),
+        label: item.label || item.name || item.title || "Unknown",
+        category: category as VennItem["category"],
+        criticality: (item.criticality || "info") as VennItem["criticality"],
+        evidence: item.evidence || item.description || item.evidenceSummary || "",
+        sourceElement: item.sourceElement || item.elementId,
+      });
+      
+      return {
+        unique_to_d1: uniqueD1.map((item: any) => mapItem(item, "unique_d1")),
+        aligned: alignedItems.map((item: any) => mapItem(item, "aligned")),
+        unique_to_d2: uniqueD2.map((item: any) => mapItem(item, "unique_d2")),
+        summary: normalizedSummary,
+      };
     } catch {
       return null;
     }

@@ -457,7 +457,7 @@ async function executeTool(
         const elementId = params.elementId || params.element_id || params.id;
         const elementLabel = params.elementLabel || params.element_label || params.label || "";
         const step = params.step || 1;
-        const stepLabel = params.stepLabel || params.step_label || "";
+        const stepLabel = params.stepLabel || params.step_label || problemShape.analysisSteps.find(s => s.step === step)?.label || `Step ${step}`;
         const polarity = params.polarity ?? 0;
         const criticality = params.criticality || "info";
         const evidenceSummary = params.evidenceSummary || params.evidence_summary || params.evidence || "";
@@ -465,17 +465,27 @@ async function executeTool(
         // Resolve element ID to full UUID
         const resolvedElementId = resolveElementId(elementId) || elementId;
         
-        // Use existing upsert_audit_tesseract_cell_with_token function
-        // Note: p_x_element_id must be uuid type
+        // Calculate x_index based on element position in dataset1
+        // This ensures proper grid layout in the Tesseract visualization
+        const xIndex = problemShape.dataset1.elements.findIndex(e => 
+          e.id === resolvedElementId || e.id.startsWith(elementId) || resolvedElementId.startsWith(e.id.slice(0, 8))
+        );
+        const finalXIndex = xIndex >= 0 ? xIndex : 0;
+        
+        // Get the element label from problemShape if not provided
+        const finalLabel = elementLabel || 
+          problemShape.dataset1.elements.find(e => e.id === resolvedElementId)?.label || 
+          `Element ${finalXIndex}`;
+        
         await rpc("upsert_audit_tesseract_cell_with_token", {
           p_session_id: sessionId,
-          p_x_element_id: resolvedElementId, // Must be valid UUID
+          p_x_element_id: resolvedElementId,
           p_x_element_type: problemShape.dataset1.type,
-          p_x_index: 0,
+          p_x_index: finalXIndex,
           p_y_step: step,
           p_z_polarity: polarity,
           p_token: shareToken,
-          p_x_element_label: elementLabel,
+          p_x_element_label: finalLabel,
           p_y_step_label: stepLabel,
           p_z_criticality: criticality,
           p_evidence_summary: evidenceSummary,
@@ -483,7 +493,7 @@ async function executeTool(
           p_contributing_agents: ["orchestrator"],
         });
         
-        return { success: true, result: { elementId: resolvedElementId, step, polarity, criticality } };
+        return { success: true, result: { elementId: resolvedElementId, xIndex: finalXIndex, step, polarity, criticality } };
       }
       
       case "finalize_venn": {
@@ -492,14 +502,29 @@ async function executeTool(
         const uniqueToD2 = params.uniqueToD2 || params.unique_to_d2 || params.orphans || [];
         const summary = params.summary || {};
         
+        // Normalize items to ensure they have required fields with snake_case keys for frontend
+        const normalizeItem = (item: any, category: string) => ({
+          id: item.id || item.elementId || item.element_id || crypto.randomUUID(),
+          label: item.label || item.name || item.title || "Unknown",
+          category,
+          criticality: item.criticality || "info",
+          evidence: item.evidence || item.description || item.evidenceSummary || "",
+          sourceElement: item.sourceElement || item.elementId || item.id,
+          polarity: item.polarity ?? 0,
+          description: item.description || item.evidence || "",
+        });
+        
+        // Use snake_case keys for frontend compatibility
         const vennResult = {
-          uniqueToD1,
-          aligned,
-          uniqueToD2,
+          unique_to_d1: uniqueToD1.map((item: any) => normalizeItem(item, "unique_d1")),
+          aligned: aligned.map((item: any) => normalizeItem(item, "aligned")),
+          unique_to_d2: uniqueToD2.map((item: any) => normalizeItem(item, "unique_d2")),
           summary: {
-            totalD1Coverage: summary.totalD1Coverage || (aligned.length / Math.max(problemShape.dataset1.count, 1) * 100),
-            totalD2Coverage: summary.totalD2Coverage || (aligned.length / Math.max(problemShape.dataset2.count, 1) * 100),
-            alignmentScore: summary.alignmentScore || 0,
+            total_d1_coverage: summary.totalD1Coverage || summary.total_d1_coverage || 
+              (aligned.length / Math.max(problemShape.dataset1.count, 1) * 100),
+            total_d2_coverage: summary.totalD2Coverage || summary.total_d2_coverage ||
+              (aligned.length / Math.max(problemShape.dataset2.count, 1) * 100),
+            alignment_score: summary.alignmentScore || summary.alignment_score || 0,
             gaps: uniqueToD1.length,
             orphans: uniqueToD2.length,
             aligned: aligned.length,
