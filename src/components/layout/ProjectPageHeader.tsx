@@ -11,8 +11,9 @@ interface ProjectPageHeaderProps {
 
 export function ProjectPageHeader({ title, subtitle, onMenuClick, actions }: ProjectPageHeaderProps) {
   return (
-    <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4 mb-6">
-      <div className="flex items-start gap-2 md:gap-3 flex-1">
+    <div className="flex flex-col gap-4 mb-6">
+      {/* Title row: hamburger + title/subtitle */}
+      <div className="flex items-start gap-2 md:gap-3">
         <Button
           variant="ghost"
           size="icon"
@@ -31,8 +32,9 @@ export function ProjectPageHeader({ title, subtitle, onMenuClick, actions }: Pro
           )}
         </div>
       </div>
+      {/* Actions row: on its own line */}
       {actions && (
-        <div className="shrink-0">
+        <div className="flex flex-wrap gap-2">
           {actions}
         </div>
       )}
