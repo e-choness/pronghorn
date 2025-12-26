@@ -813,7 +813,27 @@ export function useAuditPipeline() {
         let errorCount = 0;
 
         const processTesseractConcept = async (concept: typeof conceptsForTesseract[0], index: number): Promise<void> => {
+          const conceptName = concept.conceptLabel.slice(0, 40);
+          
           try {
+            // Truncate content to avoid payload issues - keep only first 5000 chars per element
+            const truncatedConcept = {
+              ...concept,
+              d1Elements: concept.d1Elements.map(e => ({
+                ...e,
+                content: e.content?.slice(0, 5000) || ""
+              })),
+              d2Elements: concept.d2Elements.map(e => ({
+                ...e,
+                content: e.content?.slice(0, 5000) || ""
+              })),
+            };
+
+            addStepDetail("tesseract", `Starting: ${conceptName}...`);
+            
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout
+
             const response = await fetch(`${BASE_URL}/audit-build-tesseract`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -821,12 +841,18 @@ export function useAuditPipeline() {
                 sessionId, 
                 projectId, 
                 shareToken, 
-                concepts: [concept] // Send ONE concept
+                concepts: [truncatedConcept]
               }),
+              signal: controller.signal,
             });
 
+            clearTimeout(timeoutId);
+
             if (!response.ok) {
-              console.error(`[tesseract] Failed for concept ${concept.conceptLabel}:`, await response.text());
+              const errorText = await response.text().catch(() => "Unknown error");
+              const errorMsg = `${conceptName}: HTTP ${response.status} - ${errorText.slice(0, 100)}`;
+              console.error(`[tesseract] Failed:`, errorMsg);
+              addStepDetail("tesseract", `❌ ${errorMsg}`);
               errorCount++;
               return;
             }
@@ -848,7 +874,9 @@ export function useAuditPipeline() {
                     d2ElementIds: concept.d2Elements.map(e => e.id),
                   };
                   localTesseractCells.push(cell);
-                  addStepDetail("tesseract", `${data.conceptLabel}: ${data.polarity > 0 ? "+" : ""}${data.polarity.toFixed(2)}`);
+                  const polarityStr = data.polarity >= 0 ? `+${data.polarity.toFixed(2)}` : data.polarity.toFixed(2);
+                  addStepDetail("tesseract", `✓ ${data.conceptLabel}: ${polarityStr}`);
+                  updateResults(); // Update immediately so UI reflects new cell
                 }
               },
               (data) => {
@@ -865,36 +893,53 @@ export function useAuditPipeline() {
                         d1ElementIds: concept.d1Elements.map(e => e.id),
                         d2ElementIds: concept.d2Elements.map(e => e.id),
                       });
+                      updateResults();
                     }
                   }
                 }
               },
               (err) => {
-                console.error(`[tesseract] Stream error for ${concept.conceptLabel}:`, err);
+                console.error(`[tesseract] Stream error for ${conceptName}:`, err);
+                addStepDetail("tesseract", `❌ ${conceptName}: Stream error - ${err}`);
                 errorCount++;
               }
             );
 
             completedCount++;
-            const progressPercent = Math.round((completedCount / totalConcepts) * 95) + 5;
-            updateStep("tesseract", { 
-              message: `Analyzed ${completedCount}/${totalConcepts}: ${concept.conceptLabel}`, 
-              progress: progressPercent 
-            });
-            updateResults();
 
-          } catch (err) {
-            console.error(`[tesseract] Error for concept ${concept.conceptLabel}:`, err);
+          } catch (err: any) {
+            const errorMsg = err?.name === 'AbortError' 
+              ? `${conceptName}: Timeout (90s)`
+              : `${conceptName}: ${err?.message || 'Unknown error'}`;
+            console.error(`[tesseract] Error:`, errorMsg);
+            addStepDetail("tesseract", `❌ ${errorMsg}`);
             errorCount++;
           }
         };
 
-        // Process in parallel batches
+        // Process in parallel batches (sequential batches, parallel within batch)
         for (let i = 0; i < conceptsForTesseract.length; i += TESSERACT_PARALLEL) {
           if (abortRef.current) throw new Error("Aborted");
           
+          const batchStart = i;
           const batch = conceptsForTesseract.slice(i, i + TESSERACT_PARALLEL);
-          await Promise.all(batch.map((concept, batchIdx) => processTesseractConcept(concept, i + batchIdx)));
+          
+          // Update progress at batch start
+          const batchNum = Math.floor(i / TESSERACT_PARALLEL) + 1;
+          const totalBatches = Math.ceil(conceptsForTesseract.length / TESSERACT_PARALLEL);
+          updateStep("tesseract", { 
+            message: `Batch ${batchNum}/${totalBatches}: Processing ${batch.length} concepts...`, 
+            progress: Math.round((i / totalConcepts) * 90) + 5 
+          });
+          
+          await Promise.all(batch.map((concept, batchIdx) => processTesseractConcept(concept, batchStart + batchIdx)));
+          
+          // Update progress after batch completes
+          const progressPercent = Math.round(((i + batch.length) / totalConcepts) * 90) + 5;
+          updateStep("tesseract", { 
+            message: `Completed ${completedCount}/${totalConcepts} concepts (${errorCount} errors)`, 
+            progress: progressPercent 
+          });
         }
 
         const finalMessage = errorCount > 0 
