@@ -229,6 +229,7 @@ export function useAuditPipeline() {
 
       // ========================================
       // PHASE 1: Extract D1 and D2 concepts in parallel
+      // If content is > 50k chars, batch the extraction calls
       // ========================================
       
       // Calculate character counts upfront
@@ -237,85 +238,142 @@ export function useAuditPipeline() {
       const d1EstTokens = Math.ceil(d1TotalChars / 4);
       const d2EstTokens = Math.ceil(d2TotalChars / 4);
       
+      const BATCH_CHAR_LIMIT = 50000; // 50k chars per batch
+      
+      // Helper to batch elements by character count
+      const batchByCharLimit = (elements: Element[], limit: number): Element[][] => {
+        const batches: Element[][] = [];
+        let currentBatch: Element[] = [];
+        let currentChars = 0;
+        
+        for (const el of elements) {
+          const elChars = el.content?.length || 0;
+          if (currentChars + elChars > limit && currentBatch.length > 0) {
+            batches.push(currentBatch);
+            currentBatch = [];
+            currentChars = 0;
+          }
+          currentBatch.push(el);
+          currentChars += elChars;
+        }
+        if (currentBatch.length > 0) {
+          batches.push(currentBatch);
+        }
+        return batches;
+      };
+      
+      // Create batches
+      const d1Batches = batchByCharLimit(d1Elements, BATCH_CHAR_LIMIT);
+      const d2Batches = batchByCharLimit(d2Elements, BATCH_CHAR_LIMIT);
+      
       setProgress({ phase: "extracting_d1", message: "Extracting concepts...", progress: 15 });
       updateStep("d1", { 
         status: "running", 
-        message: `${d1TotalChars.toLocaleString()} chars (~${d1EstTokens.toLocaleString()} tokens)`, 
+        message: `${d1TotalChars.toLocaleString()} chars (~${d1EstTokens.toLocaleString()} tokens) in ${d1Batches.length} batch(es)`, 
         startedAt: new Date() 
       });
-      addStepDetail("d1", `Total content: ${d1TotalChars.toLocaleString()} chars (~${d1EstTokens.toLocaleString()} tokens)`);
+      addStepDetail("d1", `Total content: ${d1TotalChars.toLocaleString()} chars (~${d1EstTokens.toLocaleString()} tokens) → ${d1Batches.length} batch(es)`);
       
       updateStep("d2", { 
         status: "running", 
-        message: `${d2TotalChars.toLocaleString()} chars (~${d2EstTokens.toLocaleString()} tokens)`, 
+        message: `${d2TotalChars.toLocaleString()} chars (~${d2EstTokens.toLocaleString()} tokens) in ${d2Batches.length} batch(es)`, 
         startedAt: new Date() 
       });
-      addStepDetail("d2", `Total content: ${d2TotalChars.toLocaleString()} chars (~${d2EstTokens.toLocaleString()} tokens)`);
+      addStepDetail("d2", `Total content: ${d2TotalChars.toLocaleString()} chars (~${d2EstTokens.toLocaleString()} tokens) → ${d2Batches.length} batch(es)`);
 
-      // Start both extractions in parallel
-      const d1Promise = fetch(`${BASE_URL}/audit-extract-concepts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, projectId, shareToken, dataset: "d1", elements: d1Elements }),
-      });
-
-      const d2Promise = fetch(`${BASE_URL}/audit-extract-concepts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, projectId, shareToken, dataset: "d2", elements: d2Elements }),
-      });
-
-      const [d1Response, d2Response] = await Promise.all([d1Promise, d2Promise]);
-
-      // Process both streams - handle errors independently so one failure doesn't block the other
-      const processStream = async (
-        response: Response, 
-        stepId: string, 
-        conceptsRef: { value: Concept[] }
-      ): Promise<void> => {
-        try {
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`[${stepId}] HTTP error:`, response.status, errorText);
-            updateStep(stepId, { status: "error", message: `HTTP ${response.status}: ${errorText.slice(0, 100)}` });
-            return;
-          }
-          await streamSSE(
-            response,
-            (data) => updateStep(stepId, { message: data.message, progress: data.progress }),
-            (data) => addStepDetail(stepId, `${data.label} (${data.elementCount} elements)`),
-            (data) => {
-              conceptsRef.value = data.concepts || [];
-              updateStep(stepId, { 
-                status: "completed", 
-                message: `${conceptsRef.value.length} concepts extracted`, 
-                progress: 100, 
-                completedAt: new Date() 
-              });
-            },
-            (err) => {
-              console.error(`[${stepId}] Stream error:`, err);
-              updateStep(stepId, { status: "error", message: err });
-            }
-          );
-        } catch (err) {
-          const errMsg = err instanceof Error ? err.message : String(err);
-          console.error(`[${stepId}] Processing error:`, errMsg);
-          updateStep(stepId, { status: "error", message: errMsg });
+      // Helper to extract concepts from a batch
+      const extractBatch = async (
+        dataset: "d1" | "d2",
+        batchElements: Element[],
+        batchIndex: number,
+        totalBatches: number,
+        stepId: string
+      ): Promise<Concept[]> => {
+        const batchChars = batchElements.reduce((sum, e) => sum + (e.content?.length || 0), 0);
+        addStepDetail(stepId, `Batch ${batchIndex + 1}/${totalBatches}: ${batchElements.length} elements, ${batchChars.toLocaleString()} chars`);
+        
+        const response = await fetch(`${BASE_URL}/audit-extract-concepts`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId, projectId, shareToken, dataset, elements: batchElements }),
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`[${stepId}] Batch ${batchIndex + 1} HTTP error:`, response.status, errorText);
+          addStepDetail(stepId, `Batch ${batchIndex + 1} ERROR: ${errorText.slice(0, 100)}`);
+          return [];
         }
+        
+        const concepts: Concept[] = [];
+        await streamSSE(
+          response,
+          (data) => {
+            updateStep(stepId, { 
+              message: `Batch ${batchIndex + 1}/${totalBatches}: ${data.message}`, 
+              progress: Math.round((batchIndex / totalBatches) * 100 + (data.progress / totalBatches))
+            });
+          },
+          (data) => addStepDetail(stepId, `Batch ${batchIndex + 1}: ${data.label} (${data.elementCount} elements)`),
+          (data) => {
+            concepts.push(...(data.concepts || []));
+            addStepDetail(stepId, `Batch ${batchIndex + 1} complete: ${data.concepts?.length || 0} concepts`);
+          },
+          (err) => {
+            console.error(`[${stepId}] Batch ${batchIndex + 1} stream error:`, err);
+            addStepDetail(stepId, `Batch ${batchIndex + 1} stream error: ${err}`);
+          }
+        );
+        return concepts;
       };
 
-      const d1ConceptsRef = { value: [] as Concept[] };
-      const d2ConceptsRef = { value: [] as Concept[] };
+      // Process all batches for D1 and D2 in parallel
+      const processAllBatches = async (
+        dataset: "d1" | "d2",
+        batches: Element[][],
+        stepId: string
+      ): Promise<Concept[]> => {
+        const allConcepts: Concept[] = [];
+        for (let i = 0; i < batches.length; i++) {
+          if (abortRef.current) throw new Error("Aborted");
+          const batchConcepts = await extractBatch(dataset, batches[i], i, batches.length, stepId);
+          allConcepts.push(...batchConcepts);
+        }
+        return allConcepts;
+      };
 
-      // Run in parallel - each handles its own errors
-      await Promise.allSettled([
-        processStream(d1Response, "d1", d1ConceptsRef),
-        processStream(d2Response, "d2", d2ConceptsRef),
+      // Run D1 and D2 extraction in parallel
+      const [d1Result, d2Result] = await Promise.allSettled([
+        processAllBatches("d1", d1Batches, "d1"),
+        processAllBatches("d2", d2Batches, "d2"),
       ]);
 
-      d1Concepts = d1ConceptsRef.value;
-      d2Concepts = d2ConceptsRef.value;
+      // Get results from parallel execution
+      if (d1Result.status === "fulfilled") {
+        d1Concepts = d1Result.value;
+        updateStep("d1", { 
+          status: "completed", 
+          message: `${d1Concepts.length} concepts extracted`, 
+          progress: 100, 
+          completedAt: new Date() 
+        });
+      } else {
+        console.error("[d1] Extraction failed:", d1Result.reason);
+        updateStep("d1", { status: "error", message: String(d1Result.reason) });
+      }
+
+      if (d2Result.status === "fulfilled") {
+        d2Concepts = d2Result.value;
+        updateStep("d2", { 
+          status: "completed", 
+          message: `${d2Concepts.length} concepts extracted`, 
+          progress: 100, 
+          completedAt: new Date() 
+        });
+      } else {
+        console.error("[d2] Extraction failed:", d2Result.reason);
+        updateStep("d2", { status: "error", message: String(d2Result.reason) });
+      }
 
       setProgress({ 
         phase: "merging_concepts", 
