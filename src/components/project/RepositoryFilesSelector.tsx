@@ -63,6 +63,47 @@ const getSizeClass = (chars: number): { class: string; warning: boolean } => {
   return { class: "", warning: false };
 };
 
+interface FolderSizeStats {
+  maxFileSize: number;
+  totalSize: number;
+  hasWarning: boolean;  // >= 100K files
+  hasCaution: boolean;  // >= 50K files
+  largeFileCount: number;
+}
+
+const getFolderSizeStats = (node: FileTreeNode): FolderSizeStats => {
+  if (node.type === 'file') {
+    const chars = node.charCount || 0;
+    return {
+      maxFileSize: chars,
+      totalSize: chars,
+      hasWarning: chars >= 100000,
+      hasCaution: chars >= 50000,
+      largeFileCount: chars >= 50000 ? 1 : 0
+    };
+  }
+
+  // Aggregate children stats
+  let stats: FolderSizeStats = { 
+    maxFileSize: 0, 
+    totalSize: 0, 
+    hasWarning: false, 
+    hasCaution: false,
+    largeFileCount: 0 
+  };
+  
+  node.children.forEach(child => {
+    const childStats = getFolderSizeStats(child);
+    stats.maxFileSize = Math.max(stats.maxFileSize, childStats.maxFileSize);
+    stats.totalSize += childStats.totalSize;
+    stats.hasWarning = stats.hasWarning || childStats.hasWarning;
+    stats.hasCaution = stats.hasCaution || childStats.hasCaution;
+    stats.largeFileCount += childStats.largeFileCount;
+  });
+
+  return stats;
+};
+
 export function RepositoryFilesSelector({
   projectId,
   shareToken,
@@ -301,10 +342,17 @@ export function RepositoryFilesSelector({
 
     if (node.type === 'folder') {
       const selectionState = getFolderSelectionState(node);
+      const folderStats = getFolderSizeStats(node);
+      const hasSizeIssue = folderStats.hasCaution;
+      
       return (
         <div key={node.path}>
           <div
-            className="flex items-center gap-2 py-1.5 px-2 hover:bg-accent/50 rounded-sm cursor-pointer group"
+            className={cn(
+              "flex items-center gap-2 py-1.5 px-2 hover:bg-accent/50 rounded-sm cursor-pointer group",
+              hasSizeIssue && "bg-orange-50 dark:bg-orange-950/20",
+              folderStats.hasWarning && "border-l-2 border-orange-500"
+            )}
             style={{ paddingLeft }}
           >
             <button
@@ -328,12 +376,34 @@ export function RepositoryFilesSelector({
               <Folder className="h-4 w-4 text-yellow-500" />
             )}
             <span className="text-sm font-medium truncate">{node.name}</span>
-            <span className="text-xs text-muted-foreground ml-auto opacity-0 group-hover:opacity-100">
-              {getAllFilesInFolder(node).length} files
-            </span>
+            
+            {/* Size warning indicators for folders */}
+            {hasSizeIssue && (
+              <>
+                <Badge 
+                  variant="secondary" 
+                  className={cn(
+                    "text-xs ml-auto",
+                    folderStats.hasWarning ? "bg-orange-500 text-white" : "bg-yellow-500 text-black"
+                  )}
+                >
+                  {folderStats.largeFileCount} large
+                </Badge>
+                <AlertTriangle className={cn(
+                  "h-3 w-3 flex-shrink-0",
+                  folderStats.hasWarning ? "text-orange-500" : "text-yellow-600"
+                )} />
+              </>
+            )}
+            
+            {!hasSizeIssue && (
+              <span className="text-xs text-muted-foreground ml-auto opacity-0 group-hover:opacity-100">
+                {getAllFilesInFolder(node).length} files
+              </span>
+            )}
           </div>
           {isExpanded && (
-            <div>
+            <div className={cn(hasSizeIssue && "border-l border-orange-300 dark:border-orange-800 ml-3")}>
               {node.children.map(child => renderNode(child, depth + 1))}
             </div>
           )}
