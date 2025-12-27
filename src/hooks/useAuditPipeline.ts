@@ -1282,6 +1282,8 @@ export function useAuditPipeline() {
               weight: 1.0,
               metadata: { merged: true },
             });
+          } else {
+            console.warn(`[graph] Missing D1 node for element ${d1Id} in merged concept "${concept.mergedLabel}"`);
           }
         }
 
@@ -1298,6 +1300,8 @@ export function useAuditPipeline() {
               weight: 1.0,
               metadata: { merged: true },
             });
+          } else {
+            console.warn(`[graph] Missing D2 node for element ${d2Id} in merged concept "${concept.mergedLabel}"`);
           }
         }
         
@@ -1331,6 +1335,8 @@ export function useAuditPipeline() {
               weight: 1.0,
               metadata: { gap: true },
             });
+          } else {
+            console.warn(`[graph] Missing D1 node for element ${d1Id} in gap concept "${concept.label}"`);
           }
         }
         addStepDetail("graph", `Created gap: ${concept.label}`);
@@ -1363,12 +1369,37 @@ export function useAuditPipeline() {
               weight: 1.0,
               metadata: { orphan: true },
             });
+          } else {
+            console.warn(`[graph] Missing D2 node for element ${d2Id} in orphan concept "${concept.label}"`);
           }
         }
         addStepDetail("graph", `Created orphan: ${concept.label}`);
       }
 
       updateResults();
+      
+      // Graph-level orphan verification
+      const connectedNodeIds = new Set<string>();
+      localEdges.forEach(e => {
+        connectedNodeIds.add(e.source_node_id);
+        connectedNodeIds.add(e.target_node_id);
+      });
+      const graphOrphans = localNodes.filter(n => !connectedNodeIds.has(n.id));
+      if (graphOrphans.length > 0) {
+        console.warn(`[graph] ${graphOrphans.length} graph-level orphans after rebuild:`, 
+          graphOrphans.map(n => ({ id: n.id.slice(0, 8), label: n.label?.slice(0, 30), type: n.node_type, dataset: n.source_dataset })));
+        addStepDetail("graph", `⚠️ ${graphOrphans.length} nodes have no edges after graph rebuild`);
+        
+        // Log breakdown by type
+        const orphansByType: Record<string, number> = {};
+        graphOrphans.forEach(n => {
+          orphansByType[n.node_type] = (orphansByType[n.node_type] || 0) + 1;
+        });
+        console.warn(`[graph] Orphan breakdown:`, orphansByType);
+      } else {
+        addStepDetail("graph", `✓ All ${localNodes.length} nodes have edges`);
+      }
+      
       updateStep("graph", { status: "completed", message: `${localNodes.length} nodes, ${localEdges.length} edges`, progress: 100, completedAt: new Date() });
 
       if (abortRef.current) throw new Error("Aborted");

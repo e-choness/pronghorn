@@ -9,7 +9,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Network, ZoomIn, ZoomOut, Maximize2, RefreshCw, Download, Trash2, Layers } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Network, ZoomIn, ZoomOut, Maximize2, RefreshCw, Download, Trash2, Layers, Eye, EyeOff } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -141,16 +147,21 @@ export function KnowledgeGraph({
 }: KnowledgeGraphProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [graphDensity, setGraphDensity] = useState<GraphDensity>("medium");
+  const [highlightOrphans, setHighlightOrphans] = useState(false);
   
-  // Calculate orphan count (nodes with no edges)
-  const orphanCount = useMemo(() => {
+  // Calculate orphan nodes (nodes with no edges)
+  const { orphanNodes, orphanCount } = useMemo(() => {
     const connectedNodeIds = new Set<string>();
     edges.forEach(e => {
       connectedNodeIds.add(e.source_node_id);
       connectedNodeIds.add(e.target_node_id);
     });
-    return nodes.filter(n => !connectedNodeIds.has(n.id)).length;
+    const orphans = nodes.filter(n => !connectedNodeIds.has(n.id));
+    return { orphanNodes: orphans, orphanCount: orphans.length };
   }, [nodes, edges]);
+  
+  // Set of orphan IDs for quick lookup
+  const orphanNodeIds = useMemo(() => new Set(orphanNodes.map(n => n.id)), [orphanNodes]);
   
   // Download graph as JSON
   const handleDownload = useCallback(() => {
@@ -412,6 +423,7 @@ export function KnowledgeGraph({
           
           // Add circle
           nodeEnter.append("circle")
+            .attr("class", "node-circle")
             .attr("r", (d) => nodeTypeSizes[d.node_type] || 15)
             .attr("fill", (d) => d.color || nodeTypeColors[d.node_type] || "#6b7280")
             .attr("stroke", (d) => d.node_type === "anchor" ? "#ffffff" : d.node_type === "concept" ? "#ffffff" : "#ffffff80")
@@ -522,6 +534,33 @@ export function KnowledgeGraph({
     };
   }, [graphData, dimensions, onNodeClick, graphDensity]);
 
+  // Update orphan highlighting when toggle changes
+  useEffect(() => {
+    if (!svgRef.current) return;
+    const svg = d3.select(svgRef.current);
+    
+    svg.selectAll<SVGGElement, GraphNode>("g.node")
+      .select("circle.node-circle")
+      .attr("stroke", (d) => {
+        if (highlightOrphans && orphanNodeIds.has(d.id)) {
+          return "#ef4444"; // Red for orphans
+        }
+        return d.node_type === "anchor" ? "#ffffff" : d.node_type === "concept" ? "#ffffff" : "#ffffff80";
+      })
+      .attr("stroke-width", (d) => {
+        if (highlightOrphans && orphanNodeIds.has(d.id)) {
+          return 5; // Thicker for orphans
+        }
+        return d.node_type === "anchor" ? 4 : d.node_type === "concept" ? 3 : 2;
+      })
+      .attr("filter", (d) => {
+        if (highlightOrphans && orphanNodeIds.has(d.id)) {
+          return "drop-shadow(0 0 8px #ef4444)"; // Red glow
+        }
+        return "";
+      });
+  }, [highlightOrphans, orphanNodeIds]);
+
   const handleZoom = useCallback((direction: "in" | "out" | "reset") => {
     if (!svgRef.current) return;
     const svg = d3.select(svgRef.current);
@@ -596,9 +635,40 @@ export function KnowledgeGraph({
               {nodes.length} nodes · {edges.length} edges
             </Badge>
             {orphanCount > 0 && (
-              <Badge variant="destructive" className="text-xs">
-                {orphanCount} orphans
-              </Badge>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Badge 
+                    variant="destructive" 
+                    className="text-xs cursor-pointer hover:bg-destructive/80"
+                  >
+                    {orphanCount} orphans
+                  </Badge>
+                </PopoverTrigger>
+                <PopoverContent className="w-80" align="start">
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-sm">Orphan Nodes (no edges)</h4>
+                    <p className="text-xs text-muted-foreground">
+                      These nodes have no connections in the graph.
+                    </p>
+                    <ScrollArea className="h-[200px]">
+                      <div className="space-y-1">
+                        {orphanNodes.map(node => (
+                          <div 
+                            key={node.id}
+                            className="text-xs p-2 bg-muted/50 rounded cursor-pointer hover:bg-muted"
+                            onClick={() => onNodeClick?.(node.id)}
+                          >
+                            <div className="font-medium truncate">{node.label}</div>
+                            <div className="text-muted-foreground">
+                              {node.node_type} · {node.source_dataset || "unknown"}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                </PopoverContent>
+              </Popover>
             )}
           </div>
           
@@ -675,6 +745,23 @@ export function KnowledgeGraph({
                 <TooltipContent>Download Graph (JSON)</TooltipContent>
               </Tooltip>
             </TooltipProvider>
+            {orphanCount > 0 && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant={highlightOrphans ? "default" : "outline"} 
+                      size="icon" 
+                      className="h-8 w-8"
+                      onClick={() => setHighlightOrphans(!highlightOrphans)}
+                    >
+                      {highlightOrphans ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{highlightOrphans ? "Hide orphan highlighting" : "Highlight orphan nodes"}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
             {orphanCount > 0 && onPruneOrphans && (
               <TooltipProvider>
                 <Tooltip>
