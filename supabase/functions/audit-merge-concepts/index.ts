@@ -338,16 +338,25 @@ Return ONLY the JSON object, no other text.`;
         
         // Only create merged concept if 2+ sources
         if (sourceConcepts.length >= 2) {
+          // Use Set to dedupe IDs in case of overlap
+          const d1Ids = [...new Set(sourceConcepts.flatMap(c => c.d1Ids))];
+          const d2Ids = [...new Set(sourceConcepts.flatMap(c => c.d2Ids))];
+          const elementLabels = [...new Set(sourceConcepts.flatMap(c => c.elementLabels || []))];
+          
           const mergedConcept: UnifiedConcept = {
             label: m.mergedLabel,
             description: m.mergedDescription,
-            d1Ids: sourceConcepts.flatMap(c => c.d1Ids),
-            d2Ids: sourceConcepts.flatMap(c => c.d2Ids),
-            elementLabels: sourceConcepts.flatMap(c => c.elementLabels || []),
+            d1Ids,
+            d2Ids,
+            elementLabels,
           };
           outputConcepts.push(mergedConcept);
           mergeCount++;
-          console.log(`[merge] Created: "${m.mergedLabel}" from ${sourceConcepts.length} concepts`);
+          
+          // Log ID counts for verification
+          const sourceD1Count = sourceConcepts.reduce((sum, c) => sum + c.d1Ids.length, 0);
+          const sourceD2Count = sourceConcepts.reduce((sum, c) => sum + c.d2Ids.length, 0);
+          console.log(`[merge] Created: "${m.mergedLabel}" from ${sourceConcepts.length} concepts (D1: ${sourceD1Count}→${d1Ids.length}, D2: ${sourceD2Count}→${d2Ids.length})`);
         }
       }
 
