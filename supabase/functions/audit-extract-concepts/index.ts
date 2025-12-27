@@ -286,9 +286,10 @@ ${mappingInstructions}
 CRITICAL RULES:
 1. Every element UUID listed above MUST appear in ${isOneToOne ? "exactly one" : "at least one"} concept's elementIds
 2. Use the exact UUIDs from the elements
-3. Descriptions must be thorough and evidence-based, not generic
-4. supportingEvidence should contain 1-3 SHORT direct quotes (max 50 chars each) from the elements that demonstrate why they belong to this concept
-5. Return ONLY valid JSON, no other text`;
+3. NEVER create a concept with 0 elements in elementIds - every concept MUST have at least 1 element
+4. Descriptions must be thorough and evidence-based, not generic
+5. supportingEvidence should contain 1-3 SHORT direct quotes (max 50 chars each) from the elements that demonstrate why they belong to this concept
+6. Return ONLY valid JSON, no other text`;
     }
 
     // Log payload size
@@ -323,8 +324,16 @@ CRITICAL RULES:
           }
         }
 
-        concepts = parsed.concepts || [];
-        console.log(`[${dataset}] Extracted ${concepts.length} concepts`);
+        let concepts_raw = parsed.concepts || [];
+        
+        // CRITICAL: Filter out concepts with no assigned elements (LLM sometimes creates these)
+        const beforeFilter = concepts_raw.length;
+        concepts = concepts_raw.filter((c: ExtractedConcept) => c.elementIds && c.elementIds.length > 0);
+        if (concepts.length < beforeFilter) {
+          console.log(`[${dataset}] Filtered out ${beforeFilter - concepts.length} concepts with 0 elements`);
+        }
+        
+        console.log(`[${dataset}] Extracted ${concepts.length} concepts (after filtering)`);
         break; // Success - exit retry loop
         
       } catch (err: any) {
