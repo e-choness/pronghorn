@@ -791,133 +791,186 @@ export function useAuditPipeline() {
       // ========================================
       // ORPHAN RECOVERY PASS: Catch any missed elements
       // ========================================
+      // LOOPING ORPHAN RECOVERY: Keep processing until all elements are assigned or max retries reached
       const runOrphanRecovery = async (
         dataset: "d1" | "d2",
         elements: Element[],
         concepts: Concept[],
-        stepId: string
+        stepId: string,
+        maxRetries: number = 5
       ): Promise<Concept[]> => {
-        const orphans = findOrphanedElements(elements, concepts);
-        if (orphans.length === 0) {
-          console.log(`[${stepId}] No orphans found`);
-          return concepts;
-        }
-
-        console.log(`[${stepId}] Found ${orphans.length} orphaned elements, running recovery...`);
-        addStepDetail(stepId, `⚠️ Found ${orphans.length} orphaned elements, running recovery...`);
+        let currentConcepts = [...concepts];
+        let attempt = 0;
         
-        const existingLabels = concepts.map(c => c.label);
-        
-        try {
-          const response = await fetch(`${BASE_URL}/audit-extract-concepts`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              sessionId, 
-              projectId, 
-              shareToken, 
-              dataset, 
-              elements: orphans,
-              mappingMode: "one_to_one",
-              recoveryMode: true,
-              existingConceptLabels: existingLabels,
-            }),
-          });
-          
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`[${stepId}] Recovery HTTP error:`, response.status, errorText);
-            addStepDetail(stepId, `❌ Recovery failed: HTTP ${response.status}`);
-            return concepts;
-          }
-          
-          const result = await response.json();
-          
-          if (!result.success || !result.concepts?.length) {
-            console.error(`[${stepId}] Recovery returned no concepts`);
-            addStepDetail(stepId, `❌ Recovery returned no concepts`);
-            return concepts;
-          }
-          
-          const recoveryConcepts: Concept[] = result.concepts;
-          console.log(`[${stepId}] Recovery found ${recoveryConcepts.length} concepts for ${orphans.length} orphans`);
-          addStepDetail(stepId, `✅ Recovery: ${recoveryConcepts.length} concepts for ${orphans.length} orphans`);
-          
-          // Merge recovery concepts: existing concepts get elements added, new concepts are appended
-          const updatedConcepts = [...concepts];
-          for (const rc of recoveryConcepts) {
-            const existingIdx = updatedConcepts.findIndex(c => c.label.toLowerCase() === rc.label.toLowerCase());
-            let targetConceptNode: LocalGraphNode | undefined;
-            
-            if (existingIdx >= 0) {
-              // Add elements to existing concept
-              const existing = updatedConcepts[existingIdx];
-              const existingIds = new Set(existing.elementIds);
-              for (const id of rc.elementIds) {
-                if (!existingIds.has(id)) {
-                  existing.elementIds.push(id);
-                }
-              }
-              addStepDetail(stepId, `  → Added ${rc.elementIds.length} to existing: ${rc.label}`);
-              
-              // Find existing concept's graph node to link edges to
-              targetConceptNode = localNodes.find(n => 
-                n.node_type === "concept" && 
-                n.label.toLowerCase() === existing.label.toLowerCase() &&
-                n.source_dataset === (dataset === "d1" ? "dataset1" : "dataset2")
-              );
+        while (attempt < maxRetries) {
+          const orphans = findOrphanedElements(elements, currentConcepts);
+          if (orphans.length === 0) {
+            if (attempt > 0) {
+              console.log(`[${stepId}] All elements assigned after ${attempt} recovery attempt(s)`);
+              addStepDetail(stepId, `✅ All elements assigned after ${attempt} recovery attempt(s)`);
             } else {
-              // New concept - create graph node
-              targetConceptNode = {
-                id: localId(),
-                label: rc.label,
-                description: rc.description || "",
-                node_type: "concept",
-                source_dataset: dataset === "d1" ? "dataset1" : "dataset2",
-                source_element_ids: rc.elementIds,
-                color: dataset === "d1" ? "#60a5fa" : "#4ade80",
-                size: 20,
-                metadata: { source: dataset, premerge: true, recovery: true },
-              };
-              localNodes.push(targetConceptNode);
-              updatedConcepts.push(rc);
-              addStepDetail(stepId, `  → New concept: ${rc.label} (${rc.elementIds.length} elements)`);
+              console.log(`[${stepId}] No orphans found`);
             }
-
-            // ALWAYS create edges for recovered elements (whether assigned to existing or new concept)
-            if (targetConceptNode) {
-              for (const elId of rc.elementIds) {
-                const elementNode = localNodes.find(n => n.metadata?.originalElementId === elId);
-                if (elementNode) {
-                  // Check if edge already exists (avoid duplicates)
-                  const edgeExists = localEdges.some(e => 
-                    e.source_node_id === elementNode.id && 
-                    e.target_node_id === targetConceptNode!.id
+            return currentConcepts;
+          }
+          
+          attempt++;
+          console.log(`[${stepId}] Recovery attempt ${attempt}/${maxRetries}: ${orphans.length} orphans`);
+          addStepDetail(stepId, `⚠️ Recovery attempt ${attempt}/${maxRetries}: ${orphans.length} orphans`);
+          
+          // Batch orphans using same limits as main extraction
+          const orphanBatches = batchByCharLimit(
+            orphans, 
+            BATCH_CHAR_LIMIT, 
+            BATCH_ELEMENT_LIMIT, 
+            orphans.reduce((s, e) => s + (e.content?.length || 0), 0)
+          );
+          
+          let recoveredCount = 0;
+          
+          for (let bi = 0; bi < orphanBatches.length; bi++) {
+            const batchOrphans = orphanBatches[bi];
+            const existingLabels = currentConcepts.map(c => c.label);
+            
+            try {
+              const response = await fetch(`${BASE_URL}/audit-extract-concepts`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                  sessionId, 
+                  projectId, 
+                  shareToken, 
+                  dataset, 
+                  elements: batchOrphans,
+                  mappingMode: "one_to_one", // Always strict for recovery
+                  recoveryMode: true,
+                  existingConceptLabels: existingLabels,
+                }),
+              });
+              
+              if (!response.ok) {
+                console.error(`[${stepId}] Recovery batch ${bi + 1} HTTP error:`, response.status);
+                continue;
+              }
+              
+              const result = await response.json();
+              if (!result.success) {
+                console.error(`[${stepId}] Recovery batch ${bi + 1} failed:`, result.error);
+                continue;
+              }
+              
+              const recoveryConcepts: Concept[] = result.concepts || [];
+              
+              // Merge recovery concepts into currentConcepts
+              for (const rc of recoveryConcepts) {
+                // Skip concepts with no elements (should be filtered server-side but double-check)
+                if (!rc.elementIds || rc.elementIds.length === 0) continue;
+                
+                recoveredCount += rc.elementIds.length;
+                
+                const existingIdx = currentConcepts.findIndex(
+                  c => c.label.toLowerCase() === rc.label.toLowerCase()
+                );
+                
+                let targetConceptNode: LocalGraphNode | undefined;
+                
+                if (existingIdx >= 0) {
+                  // Add to existing concept
+                  const existing = currentConcepts[existingIdx];
+                  const existingIds = new Set(existing.elementIds);
+                  for (const id of rc.elementIds) {
+                    if (!existingIds.has(id)) {
+                      existing.elementIds.push(id);
+                    }
+                  }
+                  
+                  // Find existing concept node
+                  targetConceptNode = localNodes.find(n => 
+                    n.node_type === "concept" && 
+                    n.label.toLowerCase() === existing.label.toLowerCase() &&
+                    n.source_dataset === (dataset === "d1" ? "dataset1" : "dataset2")
                   );
-                  if (!edgeExists) {
-                    localEdges.push({
-                      id: localId(),
-                      source_node_id: elementNode.id,
-                      target_node_id: targetConceptNode.id,
-                      edge_type: dataset === "d1" ? "defines" : "implements",
-                      label: dataset === "d1" ? "defines" : "implements",
-                      weight: 1.0,
-                      metadata: { premerge: true, recovery: true },
-                    });
+                  
+                  // Update the node's source_element_ids
+                  if (targetConceptNode) {
+                    const nodeElementIds = new Set(targetConceptNode.source_element_ids || []);
+                    for (const id of rc.elementIds) {
+                      if (!nodeElementIds.has(id)) {
+                        targetConceptNode.source_element_ids.push(id);
+                      }
+                    }
+                  }
+                } else {
+                  // New concept
+                  targetConceptNode = {
+                    id: localId(),
+                    label: rc.label,
+                    description: rc.description || "",
+                    node_type: "concept",
+                    source_dataset: dataset === "d1" ? "dataset1" : "dataset2",
+                    source_element_ids: rc.elementIds,
+                    color: dataset === "d1" ? "#60a5fa" : "#4ade80",
+                    size: 20,
+                    metadata: { source: dataset, premerge: true, recovery: true, attempt },
+                  };
+                  localNodes.push(targetConceptNode);
+                  currentConcepts.push(rc);
+                }
+                
+                // Create edges for recovered elements
+                if (targetConceptNode) {
+                  for (const elId of rc.elementIds) {
+                    const elementNode = localNodes.find(n => n.metadata?.originalElementId === elId);
+                    if (elementNode) {
+                      const edgeExists = localEdges.some(e => 
+                        e.source_node_id === elementNode.id && 
+                        e.target_node_id === targetConceptNode!.id
+                      );
+                      if (!edgeExists) {
+                        localEdges.push({
+                          id: localId(),
+                          source_node_id: elementNode.id,
+                          target_node_id: targetConceptNode.id,
+                          edge_type: dataset === "d1" ? "defines" : "implements",
+                          label: dataset === "d1" ? "defines" : "implements",
+                          weight: 1.0,
+                          metadata: { premerge: true, recovery: true, attempt },
+                        });
+                      }
+                    }
                   }
                 }
               }
+              
+              if (orphanBatches.length > 1) {
+                addStepDetail(stepId, `  Batch ${bi + 1}/${orphanBatches.length}: ${recoveryConcepts.length} concepts`);
+              }
+              
+            } catch (err) {
+              console.error(`[${stepId}] Recovery batch ${bi + 1} error:`, err);
             }
           }
           
           updateResults();
-          return updatedConcepts;
           
-        } catch (err: any) {
-          console.error(`[${stepId}] Recovery error:`, err);
-          addStepDetail(stepId, `❌ Recovery error: ${err.message || String(err)}`);
-          return concepts;
+          // If we didn't recover any elements this attempt, break to avoid infinite loop
+          if (recoveredCount === 0) {
+            console.warn(`[${stepId}] Recovery attempt ${attempt} recovered 0 elements, stopping`);
+            addStepDetail(stepId, `⚠️ Attempt ${attempt} recovered 0 elements, stopping recovery`);
+            break;
+          }
+          
+          addStepDetail(stepId, `  Attempt ${attempt} recovered ${recoveredCount} elements`);
         }
+        
+        // Final orphan check
+        const finalOrphans = findOrphanedElements(elements, currentConcepts);
+        if (finalOrphans.length > 0) {
+          console.warn(`[${stepId}] ${finalOrphans.length} elements still orphaned after ${attempt} attempts`);
+          addStepDetail(stepId, `❌ ${finalOrphans.length} elements still orphaned after ${attempt} attempts`);
+        }
+        
+        return currentConcepts;
       };
 
       // Run orphan recovery for D1 and D2
