@@ -3769,6 +3769,18 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      get_audit_sessions_list_with_token: {
+        Args: { p_project_id: string; p_token: string }
+        Returns: {
+          created_at: string
+          current_iteration: number
+          id: string
+          max_iterations: number
+          name: string
+          phase: string
+          status: string
+        }[]
+      }
       get_audit_sessions_with_token: {
         Args: {
           p_limit?: number
