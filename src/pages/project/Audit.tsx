@@ -47,11 +47,22 @@ import type { Database } from "@/integrations/supabase/types";
 
 type AuditSession = Database["public"]["Tables"]["audit_sessions"]["Row"];
 
+// Lightweight type for session list (no heavy JSONB fields)
+type AuditSessionListItem = {
+  id: string;
+  name: string;
+  status: string;
+  created_at: string;
+  current_iteration: number;
+  max_iterations: number;
+  phase: string | null;
+};
+
 export default function Audit() {
   const { projectId } = useParams<{ projectId: string }>();
   const { token: shareToken } = useShareToken(projectId!);
   
-  const [sessions, setSessions] = useState<AuditSession[]>([]);
+  const [sessions, setSessions] = useState<AuditSessionListItem[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | undefined>();
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
@@ -90,12 +101,12 @@ export default function Audit() {
     saveAuditData,
   } = useRealtimeAudit(projectId!, loadedSessionId);
 
-  // Load all sessions for this project (only on mount or when project/token changes)
+  // Load all sessions for this project (lightweight - only metadata, no heavy JSONB fields)
   useEffect(() => {
     if (!projectId || !shareToken) return;
     
     const loadSessions = async () => {
-      const { data, error } = await supabase.rpc("get_audit_sessions_with_token", {
+      const { data, error } = await supabase.rpc("get_audit_sessions_list_with_token", {
         p_project_id: projectId,
         p_token: shareToken,
       });
