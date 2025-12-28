@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useMemo, useCallback } from "react";
 import ForceGraph2D, { ForceGraphMethods } from "react-force-graph-2d";
+import * as d3 from "d3";
 import { useTheme } from "next-themes";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +41,7 @@ interface GraphNode {
   fy?: number | null;
   color: string;
   size: number;
+  hasLinks?: boolean;
 }
 
 interface GraphLink {
@@ -149,18 +151,19 @@ export function KnowledgeGraph({
   const { theme, resolvedTheme } = useTheme();
   const isDarkMode = (resolvedTheme ?? theme) === "dark";
 
-  // Calculate orphan nodes (nodes with no edges)
-  const { orphanNodes, orphanCount, orphanNodeIds } = useMemo(() => {
-    const connectedNodeIds = new Set<string>();
+  // Calculate orphan nodes (nodes with no edges) and connected node IDs
+  const { orphanNodes, orphanCount, orphanNodeIds, connectedNodeIds } = useMemo(() => {
+    const connected = new Set<string>();
     edges.forEach(e => {
-      connectedNodeIds.add(e.source_node_id);
-      connectedNodeIds.add(e.target_node_id);
+      connected.add(e.source_node_id);
+      connected.add(e.target_node_id);
     });
-    const orphans = nodes.filter(n => !connectedNodeIds.has(n.id));
+    const orphans = nodes.filter(n => !connected.has(n.id));
     return { 
       orphanNodes: orphans, 
       orphanCount: orphans.length,
-      orphanNodeIds: new Set(orphans.map(n => n.id))
+      orphanNodeIds: new Set(orphans.map(n => n.id)),
+      connectedNodeIds: connected
     };
   }, [nodes, edges]);
 
@@ -198,6 +201,7 @@ export function KnowledgeGraph({
       ...nodes.map((n) => {
         nodeMap.add(n.id);
         const existing = prevNodes.get(n.id);
+        const hasLinks = connectedNodeIds.has(n.id);
         return {
           id: n.id,
           label: n.label,
@@ -207,6 +211,7 @@ export function KnowledgeGraph({
           createdByAgent: n.created_by_agent,
           color: n.color || nodeTypeColors[n.node_type] || "#6b7280",
           size: nodeTypeSizes[n.node_type] || 15,
+          hasLinks,
           // Preserve positions if node existed before
           ...(existing ? {
             x: existing.x,
@@ -248,7 +253,7 @@ export function KnowledgeGraph({
     ];
 
     return { nodes: graphNodes, links: graphLinks };
-  }, [nodes, edges]);
+  }, [nodes, edges, connectedNodeIds]);
 
   // Update position cache on simulation tick
   const handleEngineTick = useCallback(() => {
@@ -280,16 +285,29 @@ export function KnowledgeGraph({
     return () => resizeObserver.disconnect();
   }, []);
 
-  // Update forces when density changes
+  // Update forces when density changes - including radial gravity for orphans
   useEffect(() => {
     if (!graphRef.current) return;
     const density = densityPresets[graphDensity];
+    const centerX = dimensions.width / 2;
+    const centerY = dimensions.height / 2;
     
     graphRef.current.d3Force('charge')?.strength(density.chargeStrength);
     graphRef.current.d3Force('link')?.distance(density.linkDistance);
     graphRef.current.d3Force('collision')?.radius(density.collisionRadius);
+    
+    // Add radial force - stronger pull for orphan nodes to keep them from drifting away
+    graphRef.current.d3Force('radial', 
+      d3.forceRadial<GraphNode>(0, centerX, centerY)
+        .strength((d) => d.hasLinks ? 0.01 : 0.12)
+    );
+    
+    // Add weak centering forces for all nodes
+    graphRef.current.d3Force('x', d3.forceX<GraphNode>(centerX).strength(0.03));
+    graphRef.current.d3Force('y', d3.forceY<GraphNode>(centerY).strength(0.03));
+    
     graphRef.current.d3ReheatSimulation();
-  }, [graphDensity]);
+  }, [graphDensity, dimensions]);
 
   // Download graph as JSON
   const handleDownload = useCallback(() => {
