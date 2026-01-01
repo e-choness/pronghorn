@@ -3,7 +3,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, List, LayoutGrid, FileText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -12,6 +12,7 @@ interface Artifact {
   ai_title: string | null;
   content: string;
   created_at: string;
+  image_url: string | null;
 }
 
 interface ArtifactsListSelectorProps {
@@ -42,6 +43,7 @@ export function ArtifactsListSelector({
 }: ArtifactsListSelectorProps) {
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
 
   useEffect(() => {
     loadArtifacts();
@@ -97,6 +99,7 @@ export function ArtifactsListSelector({
     .reduce((sum, a) => sum + (a.content?.length || 0), 0);
 
   const largeItemCount = artifacts.filter(a => (a.content?.length || 0) >= 100000).length;
+  const imageArtifactCount = artifacts.filter(a => a.image_url).length;
 
   if (loading) {
     return <div className="text-sm text-muted-foreground">Loading artifacts...</div>;
@@ -120,6 +123,31 @@ export function ArtifactsListSelector({
             Select &lt;100K only
           </Button>
         )}
+        
+        {/* View mode toggle - only show if there are image artifacts */}
+        {imageArtifactCount > 0 && (
+          <div className="flex border rounded-md ml-2">
+            <Button
+              variant={viewMode === "list" ? "secondary" : "ghost"}
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setViewMode("list")}
+              title="List view"
+            >
+              <List className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={viewMode === "grid" ? "secondary" : "ghost"}
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setViewMode("grid")}
+              title="Grid view"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+        
         <span className="text-xs text-muted-foreground ml-auto">
           Selected: {formatSize(totalSelectedChars)} chars
         </span>
@@ -134,47 +162,111 @@ export function ArtifactsListSelector({
         </div>
       )}
 
-      <div className="space-y-2">
-        {artifacts.map((artifact) => {
-          const charCount = artifact.content?.length || 0;
-          const sizeInfo = getSizeClass(charCount);
-          
-          return (
-            <div
-              key={artifact.id}
-              className={cn(
-                "flex items-start gap-2 p-2 hover:bg-muted/50 rounded border",
-                sizeInfo.warning && "border-orange-500/30"
-              )}
-            >
-              <Checkbox
-                id={`artifact-${artifact.id}`}
-                checked={selectedArtifacts.has(artifact.id)}
-                onCheckedChange={() => toggleArtifact(artifact.id)}
-              />
-              <Label
-                htmlFor={`artifact-${artifact.id}`}
-                className="text-sm cursor-pointer flex-1"
+      {viewMode === "grid" ? (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          {artifacts.map((artifact) => {
+            const charCount = artifact.content?.length || 0;
+            const sizeInfo = getSizeClass(charCount);
+            const isSelected = selectedArtifacts.has(artifact.id);
+            
+            return (
+              <div
+                key={artifact.id}
+                className={cn(
+                  "relative rounded-lg border overflow-hidden cursor-pointer transition-all",
+                  isSelected && "ring-2 ring-primary",
+                  sizeInfo.warning && "border-orange-500/30"
+                )}
+                onClick={() => toggleArtifact(artifact.id)}
               >
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">
-                    {artifact.ai_title || "Untitled Artifact"}
-                  </span>
-                  <Badge variant="secondary" className={cn("text-xs", sizeInfo.class)}>
-                    {formatSize(charCount)}
-                  </Badge>
-                  {sizeInfo.warning && (
-                    <AlertTriangle className="h-3 w-3 text-orange-500" />
-                  )}
+                {artifact.image_url ? (
+                  <img 
+                    src={artifact.image_url} 
+                    alt={artifact.ai_title || "Artifact"}
+                    className="w-full aspect-square object-cover"
+                  />
+                ) : (
+                  <div className="w-full aspect-square bg-muted flex items-center justify-center">
+                    <FileText className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-2">
+                  <div className="flex items-center gap-1.5">
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={() => toggleArtifact(artifact.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="border-white data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                    />
+                    <span className="text-white text-xs truncate flex-1">
+                      {artifact.ai_title || "Untitled"}
+                    </span>
+                    <Badge variant="secondary" className={cn("text-[10px] px-1 py-0", sizeInfo.class)}>
+                      {formatSize(charCount)}
+                    </Badge>
+                  </div>
                 </div>
-                <div className="text-xs text-muted-foreground line-clamp-2 mt-1">
-                  {artifact.content.substring(0, 150)}...
-                </div>
-              </Label>
-            </div>
-          );
-        })}
-      </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {artifacts.map((artifact) => {
+            const charCount = artifact.content?.length || 0;
+            const sizeInfo = getSizeClass(charCount);
+            
+            return (
+              <div
+                key={artifact.id}
+                className={cn(
+                  "flex items-start gap-2 p-2 hover:bg-muted/50 rounded border",
+                  sizeInfo.warning && "border-orange-500/30"
+                )}
+              >
+                <Checkbox
+                  id={`artifact-${artifact.id}`}
+                  checked={selectedArtifacts.has(artifact.id)}
+                  onCheckedChange={() => toggleArtifact(artifact.id)}
+                  className="mt-1"
+                />
+                
+                {/* Image thumbnail */}
+                {artifact.image_url && (
+                  <div className="w-12 h-12 rounded overflow-hidden bg-muted shrink-0">
+                    <img 
+                      src={artifact.image_url} 
+                      alt={artifact.ai_title || "Artifact image"}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )}
+                
+                <Label
+                  htmlFor={`artifact-${artifact.id}`}
+                  className="text-sm cursor-pointer flex-1"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">
+                      {artifact.ai_title || "Untitled Artifact"}
+                    </span>
+                    <Badge variant="secondary" className={cn("text-xs", sizeInfo.class)}>
+                      {formatSize(charCount)}
+                    </Badge>
+                    {sizeInfo.warning && (
+                      <AlertTriangle className="h-3 w-3 text-orange-500" />
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                    {artifact.content.substring(0, 150)}...
+                  </div>
+                </Label>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
