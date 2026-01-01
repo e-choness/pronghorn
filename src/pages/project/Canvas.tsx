@@ -6,7 +6,7 @@ import { CanvasNode } from "@/components/canvas/CanvasNode";
 import { NotesNode } from "@/components/canvas/NotesNode";
 import { ZoneNode } from "@/components/canvas/ZoneNode";
 import { LabelNode } from "@/components/canvas/LabelNode";
-import { CustomEdge } from "@/components/canvas/CustomEdge";
+// CustomEdge removed - React Flow's built-in edges properly handle styling
 import { NodePropertiesPanel } from "@/components/canvas/NodePropertiesPanel";
 import { EdgePropertiesPanel } from "@/components/canvas/EdgePropertiesPanel";
 import { useParams } from "react-router-dom";
@@ -48,9 +48,8 @@ const nodeTypes = {
   label: LabelNode,
 };
 
-const edgeTypes = {
-  default: CustomEdge,
-};
+// No custom edge types - React Flow's built-in edges properly respect style properties
+// Edge type (straight, step, etc.) is stored in edge.type and React Flow handles routing
 
 const initialNodes: Node[] = [];
 
@@ -1376,7 +1375,6 @@ function CanvasFlow() {
                 onDrop={onDrop}
                 onDragOver={onDragOver}
                 nodeTypes={nodeTypes}
-                edgeTypes={edgeTypes}
                 deleteKeyCode={null}
                 minZoom={0.05}
                 maxZoom={4}
