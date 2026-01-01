@@ -87,12 +87,16 @@ export function useRealtimeCanvas(
       const loadedNodes: Node[] = (nodesResult.data || []).map((node: any) => {
         const nodeType = (node.data as any)?.nodeType || "custom";
         const dataType = (node.data as any)?.type || node.type;
+        const loadedStyle = (node.data as any)?.style || {};
+        
+        // Strip zIndex from style - z-index is calculated dynamically for zones
+        const { zIndex: _stripZIndex, ...styleWithoutZIndex } = loadedStyle;
         
         return {
           id: node.id,
           type: nodeType, // Use stored nodeType for React Flow
           position: node.position as { x: number; y: number },
-          style: (node.data as any)?.style || undefined, // Load saved dimensions
+          style: Object.keys(styleWithoutZIndex).length > 0 ? styleWithoutZIndex : undefined,
           // Z-index will be calculated after all nodes are loaded
           zIndex: undefined,
           data: {
@@ -163,19 +167,23 @@ export function useRealtimeCanvas(
             
             // Update only the specific node that changed, then recalculate zone z-indexes
             setNodes((nds) => {
-              const updatedNodes = nds.map((node) => 
-                node.id === payload.new.id 
-                  ? {
-                      ...node,
-                      position: payload.new.position as { x: number; y: number },
-                      style: (payload.new.data as any)?.style || node.style,
-                      data: {
-                        ...(payload.new.data || {}),
-                        type: (payload.new.data as any)?.type || payload.new.type,
-                      },
-                    }
-                  : node
-              );
+              const updatedNodes = nds.map((node) => {
+                if (node.id !== payload.new.id) return node;
+                
+                const loadedStyle = (payload.new.data as any)?.style || {};
+                // Strip zIndex from style - only use node.zIndex for z-ordering
+                const { zIndex: _stripZIndex, ...styleWithoutZIndex } = loadedStyle;
+                
+                return {
+                  ...node,
+                  position: payload.new.position as { x: number; y: number },
+                  style: Object.keys(styleWithoutZIndex).length > 0 ? styleWithoutZIndex : node.style,
+                  data: {
+                    ...(payload.new.data || {}),
+                    type: (payload.new.data as any)?.type || payload.new.type,
+                  },
+                };
+              });
               // Recalculate z-indexes as nesting may have changed
               return applyZoneZIndexes(updatedNodes);
             });
@@ -186,11 +194,15 @@ export function useRealtimeCanvas(
                 console.log("Node already exists, skipping duplicate INSERT:", payload.new.id);
                 return nds;
               }
+              const loadedStyle = (payload.new.data as any)?.style || {};
+              // Strip zIndex from style - only use node.zIndex for z-ordering
+              const { zIndex: _stripZIndex, ...styleWithoutZIndex } = loadedStyle;
+              
               const newNode: Node = {
                 id: payload.new.id,
                 type: (payload.new.data as any)?.nodeType || "custom", // Use stored nodeType
                 position: payload.new.position as { x: number; y: number },
-                style: (payload.new.data as any)?.style || undefined, // Load dimensions
+                style: Object.keys(styleWithoutZIndex).length > 0 ? styleWithoutZIndex : undefined,
                 data: {
                   ...(payload.new.data || {}),
                   type: (payload.new.data as any)?.type || payload.new.type,
@@ -322,7 +334,11 @@ export function useRealtimeCanvas(
           p_position: node.position as any,
           p_data: {
             ...node.data,
-            style: node.style, // Save dimensions
+            // Strip zIndex from style before saving - z-index is calculated dynamically
+            style: (() => {
+              const { zIndex: _stripZIndex, ...styleWithoutZIndex } = (node.style || {}) as Record<string, any>;
+              return styleWithoutZIndex;
+            })(),
             nodeType: node.type, // Save React Flow node type
           } as any
         });
