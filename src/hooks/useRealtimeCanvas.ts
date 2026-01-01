@@ -2,6 +2,58 @@ import { useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Node, Edge, useNodesState, useEdgesState } from "reactflow";
 
+// Helper: Check if a node is fully contained inside a zone
+const isNodeFullyInsideZone = (node: Node, zone: Node): boolean => {
+  const nodeWidth = (node.style?.width as number) || (node.data?.style?.width as number) || 150;
+  const nodeHeight = (node.style?.height as number) || (node.data?.style?.height as number) || 60;
+  const zoneWidth = (zone.style?.width as number) || (zone.data?.style?.width as number) || 200;
+  const zoneHeight = (zone.style?.height as number) || (zone.data?.style?.height as number) || 150;
+  
+  return (
+    node.position.x >= zone.position.x &&
+    node.position.y >= zone.position.y &&
+    node.position.x + nodeWidth <= zone.position.x + zoneWidth &&
+    node.position.y + nodeHeight <= zone.position.y + zoneHeight
+  );
+};
+
+// Calculate the nesting depth of a zone (0 = not inside any zone, 1 = inside one zone, etc.)
+const calculateZoneDepth = (zoneId: string, allNodes: Node[]): number => {
+  const zone = allNodes.find(n => n.id === zoneId);
+  if (!zone || zone.type !== 'zone') return 0;
+  
+  let depth = 0;
+  const otherZones = allNodes.filter(n => n.type === 'zone' && n.id !== zoneId);
+  
+  for (const parentZone of otherZones) {
+    if (isNodeFullyInsideZone(zone, parentZone)) {
+      const parentDepth = calculateZoneDepth(parentZone.id, allNodes);
+      depth = Math.max(depth, parentDepth + 1);
+    }
+  }
+  
+  return depth;
+};
+
+// Calculate z-index for a zone based on nesting depth
+const calculateZoneZIndex = (zoneId: string, allNodes: Node[]): number => {
+  const depth = calculateZoneDepth(zoneId, allNodes);
+  return -1000 + depth;
+};
+
+// Apply dynamic z-index to all zones based on their nesting
+const applyZoneZIndexes = (allNodes: Node[]): Node[] => {
+  return allNodes.map(node => {
+    if (node.type === 'zone') {
+      return {
+        ...node,
+        zIndex: calculateZoneZIndex(node.id, allNodes)
+      };
+    }
+    return node;
+  });
+};
+
 export function useRealtimeCanvas(
   projectId: string,
   shareToken: string | null,
@@ -41,14 +93,17 @@ export function useRealtimeCanvas(
           type: nodeType, // Use stored nodeType for React Flow
           position: node.position as { x: number; y: number },
           style: (node.data as any)?.style || undefined, // Load saved dimensions
-          // Set zIndex: -1 for ZONE nodes so they render behind other nodes
-          zIndex: dataType === "ZONE" ? -1 : undefined,
+          // Z-index will be calculated after all nodes are loaded
+          zIndex: undefined,
           data: {
             ...(node.data || {}),
             type: dataType,
           },
         };
       });
+
+      // Calculate dynamic z-index for zones based on nesting depth
+      const nodesWithZIndex = applyZoneZIndexes(loadedNodes);
 
       const loadedEdges: Edge[] = (edgesResult.data || []).map((edge: any) => ({
         id: edge.id,
@@ -59,7 +114,7 @@ export function useRealtimeCanvas(
         style: edge.style || {},
       }));
 
-      setNodes(loadedNodes);
+      setNodes(nodesWithZIndex);
       setEdges(loadedEdges);
     } catch (error) {
       console.error("Error loading canvas data:", error);

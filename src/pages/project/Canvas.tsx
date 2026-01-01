@@ -116,6 +116,48 @@ const getContainedNodeIds = (
   return containedIds;
 };
 
+// Calculate the nesting depth of a zone (0 = not inside any zone, 1 = inside one zone, etc.)
+const calculateZoneDepth = (zoneId: string, allNodes: Node[]): number => {
+  const zone = allNodes.find(n => n.id === zoneId);
+  if (!zone || zone.type !== 'zone') return 0;
+  
+  let depth = 0;
+  
+  // Check all other zones to see if this zone is inside them
+  const otherZones = allNodes.filter(n => n.type === 'zone' && n.id !== zoneId);
+  
+  for (const parentZone of otherZones) {
+    if (isNodeFullyInsideZone(zone, parentZone)) {
+      // Found a parent zone, recursively calculate its depth + 1
+      const parentDepth = calculateZoneDepth(parentZone.id, allNodes);
+      depth = Math.max(depth, parentDepth + 1);
+    }
+  }
+  
+  return depth;
+};
+
+// Calculate z-index for a zone based on nesting depth
+// Outermost zones = -1000, each nested level adds 1 (so -999, -998, etc.)
+// All zones stay below regular nodes (which are at 0 or undefined)
+const calculateZoneZIndex = (zoneId: string, allNodes: Node[]): number => {
+  const depth = calculateZoneDepth(zoneId, allNodes);
+  return -1000 + depth;
+};
+
+// Apply dynamic z-index to all zones based on their nesting
+const applyZoneZIndexes = (allNodes: Node[]): Node[] => {
+  return allNodes.map(node => {
+    if (node.type === 'zone') {
+      return {
+        ...node,
+        zIndex: calculateZoneZIndex(node.id, allNodes)
+      };
+    }
+    return node;
+  });
+};
+
 function CanvasFlow() {
   const { projectId } = useParams<{ projectId: string }>();
   const { token, isTokenSet, tokenMissing } = useShareToken(projectId);
@@ -349,10 +391,13 @@ function CanvasFlow() {
         });
       }
       
+      // Recalculate z-index for all zones after any node movement (nesting may have changed)
+      setNodes(nds => applyZoneZIndexes(nds));
+      
       // Clear start positions
       dragStartPositionsRef.current.clear();
     },
-    [nodes, saveNode]
+    [nodes, saveNode, setNodes]
   );
 
   const onNodeDrag = useCallback(
@@ -633,7 +678,8 @@ function CanvasFlow() {
         id: crypto.randomUUID(),
         type: nodeType,
         position,
-        zIndex: type === "ZONE" ? -1 : undefined,
+        // Z-index will be calculated after adding to nodes array
+        zIndex: undefined,
         style: Object.keys(defaultStyle).length > 0 ? defaultStyle : undefined,
         data: {
           label: `New ${type}`,
@@ -642,7 +688,8 @@ function CanvasFlow() {
         },
       };
 
-      setNodes((nds) => nds.concat(newNode));
+      // Add node and recalculate z-indexes for all zones
+      setNodes((nds) => applyZoneZIndexes(nds.concat(newNode)));
       await saveNode(newNode);
       
       // Automatically add to active layer if one is set
@@ -695,7 +742,8 @@ function CanvasFlow() {
         id: crypto.randomUUID(),
         type: nodeType,
         position,
-        zIndex: type === "ZONE" ? -1 : undefined,
+        // Z-index will be calculated after adding to nodes array
+        zIndex: undefined,
         style: Object.keys(defaultStyle).length > 0 ? defaultStyle : undefined,
         data: {
           label: `New ${type}`,
@@ -704,7 +752,8 @@ function CanvasFlow() {
         },
       };
 
-      setNodes((nds) => nds.concat(newNode));
+      // Add node and recalculate z-indexes for all zones
+      setNodes((nds) => applyZoneZIndexes(nds.concat(newNode)));
       await saveNode(newNode);
       
       // Automatically add to active layer if one is set
