@@ -112,10 +112,20 @@ export function SlideRenderer({
 
   // Get image URL from various possible locations
   const getImageUrl = () => {
-    return imageContent?.data?.url || 
+    const url = imageContent?.data?.url || 
            imageContent?.data?.imageUrl || 
            getContentByRegion("diagram")?.data?.url ||
            imageUrl;
+    
+    // Check if URL is a valid image (not a placeholder filename)
+    if (url && (url.startsWith('data:') || url.startsWith('http') || url.startsWith('/'))) {
+      return url;
+    }
+    // Reject placeholder-like URLs that won't load
+    if (url && (url.includes('placeholder') || url.endsWith('.svg') && !url.startsWith('http'))) {
+      return null;
+    }
+    return url;
   };
 
   const imgUrl = getImageUrl();
