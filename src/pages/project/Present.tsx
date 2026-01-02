@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, RefreshCw, Trash2, Download, Loader2, Sparkles, Maximize2, Minimize2, FileDown, Bot } from "lucide-react";
+import { Plus, RefreshCw, Trash2, Download, Loader2, Sparkles, Maximize2, Minimize2, FileDown, Bot, Palette } from "lucide-react";
 import { toast } from "sonner";
 import { Json } from "@/integrations/supabase/types";
 import { SlidePreview } from "@/components/present/SlidePreview";
@@ -25,6 +25,7 @@ import { SlideNotesEditor } from "@/components/present/SlideNotesEditor";
 import { FontScaleControl } from "@/components/present/FontScaleControl";
 import { LayoutSelector } from "@/components/present/LayoutSelector";
 import { SlideRenderer } from "@/components/present/SlideRenderer";
+import { SlideImageGenerator, IMAGE_MODELS, IMAGE_STYLES } from "@/components/present/SlideImageGenerator";
 import { exportPresentationToPdf } from "@/lib/presentationPdfExport";
 // Layouts loaded from static JSON
 const presentationLayoutsData = {
@@ -162,16 +163,14 @@ export default function Present() {
   const [newTargetSlides, setNewTargetSlides] = useState(15);
   const [newPrompt, setNewPrompt] = useState("");
   const [newImageModel, setNewImageModel] = useState("gemini-2.5-flash-image");
+  const [newImageStyle, setNewImageStyle] = useState("photorealistic");
   
   // PDF export state
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const slideRenderRef = useRef<HTMLDivElement>(null);
   
-  // Image models for selection
-  const IMAGE_MODELS = [
-    { id: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image (Recommended)' },
-    { id: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image Preview' },
-  ];
+  // Image generator state for slide-level
+  const [isSlideImageGeneratorOpen, setIsSlideImageGeneratorOpen] = useState(false);
 
   // Load presentations
   useEffect(() => {
@@ -203,7 +202,7 @@ export default function Present() {
     if (!projectId || !shareToken) return;
     
     try {
-      // Create the presentation record with imageModel in metadata
+      // Create the presentation record with imageModel and imageStyle in metadata
       const { data: presentation, error } = await supabase.rpc("insert_presentation_with_token", {
         p_project_id: projectId,
         p_token: shareToken,
@@ -211,7 +210,7 @@ export default function Present() {
         p_initial_prompt: newPrompt || null,
         p_mode: newMode,
         p_target_slides: newTargetSlides,
-        p_metadata: { imageModel: newImageModel },
+        p_metadata: { imageModel: newImageModel, imageStyle: newImageStyle },
       });
       
       if (error) throw error;
@@ -255,6 +254,7 @@ export default function Present() {
             targetSlides: presentation.target_slides,
             initialPrompt: presentation.initial_prompt,
             imageModel: (presentation.metadata as any)?.imageModel || newImageModel,
+            imageStyle: (presentation.metadata as any)?.imageStyle || newImageStyle,
           }),
         }
       );
@@ -387,45 +387,59 @@ export default function Present() {
     }
   };
 
-  // Update slide data
+  // Update slide data - OPTIMISTIC updates
   const handleUpdateSlide = async (slideIndex: number, updates: Partial<any>) => {
     if (!selectedPresentation || !shareToken) return;
     
     const slides = getSlides(selectedPresentation);
     const updatedSlides = slides.map((s, i) => i === slideIndex ? { ...s, ...updates } : s);
     
+    // OPTIMISTIC: Update local state immediately
+    const updatedPresentation = { ...selectedPresentation, slides: updatedSlides as unknown as Json };
+    setSelectedPresentation(updatedPresentation);
+    setPresentations(prev => prev.map(p => p.id === selectedPresentation.id ? updatedPresentation : p));
+    
+    // Then persist to database in background
     try {
       await supabase.rpc("update_presentation_with_token", {
         p_presentation_id: selectedPresentation.id,
         p_token: shareToken,
         p_slides: updatedSlides,
       });
-      
-      // Update local state
-      const updatedPresentation = { ...selectedPresentation, slides: updatedSlides as unknown as Json };
-      setSelectedPresentation(updatedPresentation);
-      setPresentations(prev => prev.map(p => p.id === selectedPresentation.id ? updatedPresentation : p));
     } catch (err) {
-      console.error("Failed to update slide:", err);
+      console.error("Failed to persist slide update:", err);
+      // Revert on error
+      setSelectedPresentation(selectedPresentation);
+      setPresentations(prev => prev.map(p => p.id === selectedPresentation.id ? selectedPresentation : p));
       toast.error("Failed to save changes");
     }
   };
 
   // Handle notes save
-  const handleSaveNotes = async (notes: string) => {
-    await handleUpdateSlide(selectedSlideIndex, { notes });
+  const handleSaveNotes = (notes: string) => {
+    handleUpdateSlide(selectedSlideIndex, { notes });
     toast.success("Notes saved");
   };
 
   // Handle font scale change
-  const handleFontScaleChange = async (fontScale: number) => {
-    await handleUpdateSlide(selectedSlideIndex, { fontScale });
+  const handleFontScaleChange = (fontScale: number) => {
+    handleUpdateSlide(selectedSlideIndex, { fontScale });
   };
 
   // Handle layout change
-  const handleLayoutChange = async (layoutId: string) => {
-    await handleUpdateSlide(selectedSlideIndex, { layoutId });
-    toast.success("Layout updated");
+  const handleLayoutChange = (layoutId: string) => {
+    handleUpdateSlide(selectedSlideIndex, { layoutId });
+  };
+  
+  // Get project context for image generation from blackboard
+  const getProjectContext = () => {
+    if (!selectedPresentation) return "";
+    const blackboard = getBlackboard(selectedPresentation);
+    const insights = blackboard.filter(e => e.category === "insight" || e.category === "analysis");
+    if (insights.length > 0) {
+      return insights.slice(0, 3).map(e => e.content).join(". ");
+    }
+    return selectedPresentation.name;
   };
 
   // Helper to safely get slides array
@@ -460,9 +474,10 @@ export default function Present() {
   // Fullscreen rendering - bypasses all page layout
   if (isFullscreen && selectedPresentation) {
     const slides = getSlides(selectedPresentation);
-    const currentSlide = slides[selectedSlideIndex];
+    const currentSlideData = slides[selectedSlideIndex];
+    const metadata = selectedPresentation.metadata as any;
     
-    if (currentSlide) {
+    if (currentSlideData) {
       return (
         <div 
           className="fixed inset-0 z-50 bg-background flex flex-col"
@@ -482,7 +497,6 @@ export default function Present() {
                 onClick={() => setSelectedSlideIndex(prev => Math.max(0, prev - 1))}
                 disabled={selectedSlideIndex === 0}
               >
-                <span className="sr-only">Previous</span>
                 ←
               </Button>
               <span className="text-sm font-medium min-w-16 text-center">
@@ -494,7 +508,6 @@ export default function Present() {
                 onClick={() => setSelectedSlideIndex(prev => Math.min(slides.length - 1, prev + 1))}
                 disabled={selectedSlideIndex === slides.length - 1}
               >
-                <span className="sr-only">Next</span>
                 →
               </Button>
             </div>
@@ -503,7 +516,7 @@ export default function Present() {
             </Button>
           </div>
           
-          {/* Slide fills remaining space */}
+          {/* Slide fills remaining space with edit controls */}
           <div className="flex-1 min-h-0">
             <SlidePreview
               slides={slides}
@@ -512,6 +525,10 @@ export default function Present() {
               onSlideChange={setSelectedSlideIndex}
               theme={currentTheme}
               externalFullscreen={true}
+              onUpdateSlide={handleUpdateSlide}
+              projectContext={getProjectContext()}
+              imageStyle={metadata?.imageStyle}
+              imageModel={metadata?.imageModel}
             />
           </div>
         </div>
@@ -586,6 +603,25 @@ export default function Present() {
                         onChange={e => setNewPrompt(e.target.value)}
                         placeholder="Any specific areas you want to emphasize..."
                       />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-2">
+                        <Palette className="h-4 w-4" />
+                        Image Style
+                      </Label>
+                      <Select value={newImageStyle} onValueChange={setNewImageStyle}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {IMAGE_STYLES.map(style => (
+                            <SelectItem key={style.id} value={style.id}>
+                              {style.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     
                     <div className="space-y-2">

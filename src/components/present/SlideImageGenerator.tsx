@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -17,8 +17,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Wand2, Loader2, Download, ImageIcon } from "lucide-react";
+import { Wand2, Loader2, Download, ImageIcon, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+
+export const IMAGE_MODELS = [
+  { id: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image (Recommended)', description: 'Fast image generation' },
+  { id: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image Preview', description: 'Next-gen image generation' },
+];
+
+export const IMAGE_STYLES = [
+  { id: 'photorealistic', label: 'Photorealistic', prompt: 'photorealistic, high detail, professional photography, realistic lighting' },
+  { id: 'illustrated', label: 'Illustrated', prompt: 'digital illustration, clean vector art, modern design, artistic' },
+  { id: 'abstract', label: 'Abstract', prompt: 'abstract art, geometric shapes, flowing colors, conceptual visualization' },
+  { id: 'cartoon', label: 'Cartoon', prompt: 'cartoon style, bold outlines, vibrant colors, friendly illustration' },
+  { id: 'whiteboard', label: 'Whiteboard', prompt: 'clean whiteboard sketch, hand-drawn diagram, simple lines, minimal color, business diagram' },
+  { id: 'infographic', label: 'Infographic', prompt: 'infographic style, data visualization, clean icons, modern flat design' },
+];
 
 interface SlideImageGeneratorProps {
   open: boolean;
@@ -26,12 +40,10 @@ interface SlideImageGeneratorProps {
   onImageGenerated: (imageUrl: string) => void;
   initialPrompt?: string;
   currentImageUrl?: string;
+  projectContext?: string;
+  imageStyle?: string;
+  imageModel?: string;
 }
-
-const IMAGE_MODELS = [
-  { id: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image (Recommended)', description: 'Fast image generation' },
-  { id: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image Preview', description: 'Next-gen image generation' },
-];
 
 export function SlideImageGenerator({
   open,
@@ -39,11 +51,37 @@ export function SlideImageGenerator({
   onImageGenerated,
   initialPrompt = "",
   currentImageUrl,
+  projectContext,
+  imageStyle = "photorealistic",
+  imageModel = IMAGE_MODELS[0].id,
 }: SlideImageGeneratorProps) {
   const [prompt, setPrompt] = useState(initialPrompt);
-  const [selectedModel, setSelectedModel] = useState(IMAGE_MODELS[0].id);
+  const [selectedModel, setSelectedModel] = useState(imageModel);
+  const [selectedStyle, setSelectedStyle] = useState(imageStyle);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+  
+  // Update prompt when dialog opens with new initial prompt
+  useEffect(() => {
+    if (open && initialPrompt) {
+      setPrompt(initialPrompt);
+    }
+  }, [open, initialPrompt]);
+
+  // Get the style prompt suffix
+  const getStylePrompt = () => {
+    const style = IMAGE_STYLES.find(s => s.id === selectedStyle);
+    return style?.prompt || "";
+  };
+
+  const buildFullPrompt = () => {
+    const stylePrompt = getStylePrompt();
+    const contextPrefix = projectContext 
+      ? `Context: This image is for a presentation about "${projectContext}". ` 
+      : "";
+    
+    return `${contextPrefix}Professional presentation slide visual: ${prompt}. Style: ${stylePrompt}. 16:9 aspect ratio, clean, modern, high quality.`;
+  };
 
   const handleGenerate = async () => {
     if (!prompt.trim()) {
@@ -55,6 +93,9 @@ export function SlideImageGenerator({
     setGeneratedImage(null);
 
     try {
+      const fullPrompt = buildFullPrompt();
+      console.log("Generating image with prompt:", fullPrompt);
+      
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/enhance-image`,
         {
@@ -65,7 +106,7 @@ export function SlideImageGenerator({
           },
           body: JSON.stringify({
             images: [],
-            prompt: `Professional presentation slide visual: ${prompt}. 16:9 aspect ratio, clean, modern, high quality.`,
+            prompt: fullPrompt,
             model: selectedModel,
           }),
         }
@@ -106,8 +147,13 @@ export function SlideImageGenerator({
     document.body.removeChild(link);
   };
 
+  const handleClose = () => {
+    onOpenChange(false);
+    setGeneratedImage(null);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -116,6 +162,12 @@ export function SlideImageGenerator({
           </DialogTitle>
           <DialogDescription>
             Create an AI-generated image for this slide
+            {projectContext && (
+              <span className="block mt-1 text-xs text-primary">
+                <Sparkles className="inline h-3 w-3 mr-1" />
+                Using project context for relevant imagery
+              </span>
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -159,29 +211,46 @@ export function SlideImageGenerator({
             />
           </div>
 
-          {/* Model selector */}
-          <div className="space-y-2">
-            <Label>Model</Label>
-            <Select value={selectedModel} onValueChange={setSelectedModel}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {IMAGE_MODELS.map((model) => (
-                  <SelectItem key={model.id} value={model.id}>
-                    <div className="flex flex-col">
-                      <span>{model.label}</span>
-                      <span className="text-xs text-muted-foreground">{model.description}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {/* Model and Style selectors in a row */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Style</Label>
+              <Select value={selectedStyle} onValueChange={setSelectedStyle}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {IMAGE_STYLES.map((style) => (
+                    <SelectItem key={style.id} value={style.id}>
+                      {style.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Model</Label>
+              <Select value={selectedModel} onValueChange={setSelectedModel}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {IMAGE_MODELS.map((model) => (
+                    <SelectItem key={model.id} value={model.id}>
+                      <div className="flex flex-col">
+                        <span>{model.label}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
 
         <DialogFooter className="flex-col sm:flex-row gap-2">
-          {generatedImage && (
+          {generatedImage ? (
             <>
               <Button variant="outline" onClick={handleDownload}>
                 <Download className="h-4 w-4 mr-2" />
@@ -195,10 +264,9 @@ export function SlideImageGenerator({
                 Use This Image
               </Button>
             </>
-          )}
-          {!generatedImage && (
+          ) : (
             <>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
+              <Button variant="outline" onClick={handleClose}>
                 Cancel
               </Button>
               <Button onClick={handleGenerate} disabled={isGenerating || !prompt.trim()}>
