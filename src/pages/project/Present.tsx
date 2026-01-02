@@ -796,7 +796,7 @@ export default function Present() {
                         <TabsContent value="slides" className="mt-0">
                           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
                             {/* Thumbnails */}
-                            <div className="lg:col-span-1 border rounded-lg bg-muted/20">
+                            <div className="lg:col-span-1 border rounded-lg bg-muted/20 h-[calc(100vh-320px)] min-h-[400px]">
                               <SlideThumbnails
                                 slides={getSlides(selectedPresentation)}
                                 layouts={layouts}
