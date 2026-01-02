@@ -208,7 +208,7 @@ export function SlideImageGenerator({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="w-[calc(100%-50px)] max-w-5xl h-[calc(100vh-100px)] max-h-[700px] flex flex-col p-0">
+      <DialogContent className="w-[calc(100%-50px)] max-w-5xl h-[calc(100vh-100px)] max-h-[700px] flex flex-col p-0 z-[100]">
         <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Wand2 className="h-5 w-5" />
