@@ -951,14 +951,14 @@ export default function Present() {
                   <div className="flex flex-col h-full overflow-hidden">
                     {/* Header - responsive stacking */}
                     <div className="shrink-0 flex flex-col gap-3 mb-4">
-                      {/* Title and metadata row */}
-                      <div>
+                      {/* Title and metadata row - inline when space allows */}
+                      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                         <h3 className="text-lg font-semibold">{selectedPresentation.name}</h3>
-                        <p className="text-sm text-muted-foreground">
+                        <span className="text-sm text-muted-foreground">
                           {slides.length} slides • {selectedPresentation.mode}
-                        </p>
+                        </span>
                         {hasUnsavedChanges && (
-                          <p className="text-sm text-amber-500">Unsaved changes</p>
+                          <span className="text-sm text-amber-500">Unsaved changes</span>
                         )}
                       </div>
                       {/* Actions row */}

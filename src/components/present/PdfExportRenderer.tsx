@@ -47,13 +47,14 @@ export const PdfExportRenderer = forwardRef<PdfExportRendererRef, PdfExportRende
   ({ slides, layouts, presentationName, theme = "default", onComplete, onError }, ref) => {
     const [isExporting, setIsExporting] = useState(false);
     const [currentSlideIndex, setCurrentSlideIndex] = useState(-1);
-    const [capturedImages, setCapturedImages] = useState<string[]>([]);
     const renderRef = useRef<HTMLDivElement>(null);
+    // Use ref to accumulate images to avoid stale closure issues
+    const capturedImagesRef = useRef<string[]>([]);
 
     useImperativeHandle(ref, () => ({
       startExport: () => {
         console.log("Starting PDF export with", slides.length, "slides");
-        setCapturedImages([]);
+        capturedImagesRef.current = [];
         setCurrentSlideIndex(-1);
         // Small delay to ensure state reset, then start
         setTimeout(() => {
@@ -68,11 +69,13 @@ export const PdfExportRenderer = forwardRef<PdfExportRendererRef, PdfExportRende
       if (!isExporting || currentSlideIndex < 0 || currentSlideIndex >= slides.length) return;
 
       const captureSlide = async () => {
-        // Wait for render to complete - longer delay like parseDocx.ts approach
+        // Wait for render to complete
         await new Promise((resolve) => setTimeout(resolve, 800));
 
         if (!renderRef.current) {
           console.error("Render ref not available");
+          onError(new Error("Render ref not available"));
+          setIsExporting(false);
           return;
         }
 
@@ -89,14 +92,15 @@ export const PdfExportRenderer = forwardRef<PdfExportRendererRef, PdfExportRende
             backgroundColor: bgColor,
           });
 
-          setCapturedImages((prev) => [...prev, dataUrl]);
+          // Use ref to accumulate
+          capturedImagesRef.current.push(dataUrl);
           
           // Move to next slide or finish
           if (currentSlideIndex < slides.length - 1) {
             setCurrentSlideIndex((prev) => prev + 1);
           } else {
             // All slides captured, generate PDF
-            generatePdf([...capturedImages, dataUrl]);
+            generatePdf(capturedImagesRef.current);
           }
         } catch (error) {
           console.error(`Failed to capture slide ${currentSlideIndex + 1}:`, error);
@@ -136,7 +140,7 @@ export const PdfExportRenderer = forwardRef<PdfExportRendererRef, PdfExportRende
       } finally {
         setIsExporting(false);
         setCurrentSlideIndex(-1);
-        setCapturedImages([]);
+        capturedImagesRef.current = [];
       }
     };
 
