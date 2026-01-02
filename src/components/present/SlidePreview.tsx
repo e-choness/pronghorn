@@ -137,27 +137,36 @@ export function SlidePreview({
       </div>
 
       {/* Main slide area */}
-      <div className="flex-1 flex gap-4 min-h-0 overflow-hidden">
-        <div className={cn("flex-1 overflow-hidden", showNotes && currentSlide.notes && "w-2/3")}>
-          <Card className="h-full overflow-hidden">
-            <CardContent className={cn(
-              "p-0 h-full flex items-stretch bg-muted/20",
-              isFullscreen ? "p-0" : "items-center justify-center"
-            )}>
-              <div className={cn(
-                "w-full",
-                isFullscreen ? "h-full" : "max-w-4xl"
-              )}>
-                <SlideRenderer
-                  slide={currentSlide}
-                  layouts={layouts}
-                  theme={theme}
-                  isPreview={false}
-                  isFullscreen={isFullscreen}
-                />
-              </div>
-            </CardContent>
-          </Card>
+      <div className={cn(
+        "flex-1 flex gap-4 min-h-0",
+        isFullscreen ? "h-[calc(100vh-80px)]" : "overflow-hidden"
+      )}>
+        <div className={cn("flex-1", showNotes && currentSlide.notes && "w-2/3", !isFullscreen && "overflow-hidden")}>
+          {isFullscreen ? (
+            <div className="w-full h-full">
+              <SlideRenderer
+                slide={currentSlide}
+                layouts={layouts}
+                theme={theme}
+                isPreview={false}
+                isFullscreen={true}
+              />
+            </div>
+          ) : (
+            <Card className="h-full overflow-hidden">
+              <CardContent className="p-0 h-full flex items-center justify-center bg-muted/20">
+                <div className="w-full max-w-4xl">
+                  <SlideRenderer
+                    slide={currentSlide}
+                    layouts={layouts}
+                    theme={theme}
+                    isPreview={false}
+                    isFullscreen={false}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Speaker notes panel */}

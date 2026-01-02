@@ -131,12 +131,15 @@ export function SlideRenderer({ slide, layouts, theme = "default", className = "
   const isFullBleed = ["title-cover", "section-divider"].includes(slide.layoutId);
   const isSectionDivider = slide.layoutId === "section-divider";
 
-  // For fullscreen mode, use responsive flex layout
+  // For fullscreen mode, use responsive flex layout with explicit height
   if (isFullscreen) {
     return (
       <div 
-        className={`relative font-raleway h-full w-full ${className}`}
+        className={`relative font-raleway ${className}`}
         style={{
+          height: "100%",
+          minHeight: "100%",
+          width: "100%",
           background: isSectionDivider 
             ? `linear-gradient(135deg, ${themeColors.primary}, hsl(217 80% 45%))` 
             : themeColors.background,
