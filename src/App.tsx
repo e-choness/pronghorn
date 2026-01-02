@@ -35,6 +35,7 @@ const Deploy = lazy(() => import("./pages/project/Deploy"));
 const Database = lazy(() => import("./pages/project/Database"));
 const Artifacts = lazy(() => import("./pages/project/Artifacts"));
 const Chat = lazy(() => import("./pages/project/Chat"));
+const Present = lazy(() => import("./pages/project/Present"));
 
 const App = () => (
   <>
@@ -71,6 +72,7 @@ const App = () => (
         <Route path="/project/:projectId/specifications" element={<Specifications />} />
         <Route path="/project/:projectId/database" element={<Database />} />
         <Route path="/project/:projectId/deploy" element={<Deploy />} />
+        <Route path="/project/:projectId/present" element={<Present />} />
         
         {/* Project Routes - With Token (shared access via path-based token) */}
         <Route path="/project/:projectId/settings/t/:token" element={<ProjectSettings />} />
@@ -85,6 +87,7 @@ const App = () => (
         <Route path="/project/:projectId/specifications/t/:token" element={<Specifications />} />
         <Route path="/project/:projectId/database/t/:token" element={<Database />} />
         <Route path="/project/:projectId/deploy/t/:token" element={<Deploy />} />
+        <Route path="/project/:projectId/present/t/:token" element={<Present />} />
         
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
