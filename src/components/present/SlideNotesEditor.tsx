@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 interface SlideNotesEditorProps {
   notes: string;
-  onSave: (notes: string) => Promise<void>;
+  onSave: (notes: string) => void | Promise<void>;
   className?: string;
 }
 

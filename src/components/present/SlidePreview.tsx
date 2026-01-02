@@ -2,8 +2,12 @@ import { useState } from "react";
 import { SlideRenderer } from "./SlideRenderer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2, StickyNote } from "lucide-react";
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2, StickyNote, Image as ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LayoutSelector } from "./LayoutSelector";
+import { FontScaleControl } from "./FontScaleControl";
+import { SlideNotesEditor } from "./SlideNotesEditor";
+import { SlideImageGenerator } from "./SlideImageGenerator";
 
 interface SlideContent {
   regionId: string;
@@ -39,6 +43,11 @@ interface SlidePreviewProps {
   theme?: "default" | "light" | "vibrant";
   externalFullscreen?: boolean;
   fontScale?: number;
+  // New props for editing capabilities
+  onUpdateSlide?: (index: number, updates: Partial<Slide>) => void;
+  projectContext?: string;
+  imageStyle?: string;
+  imageModel?: string;
 }
 
 export function SlidePreview({ 
@@ -48,10 +57,16 @@ export function SlidePreview({
   onSlideChange, 
   theme = "default",
   externalFullscreen = false,
-  fontScale = 1
+  fontScale = 1,
+  onUpdateSlide,
+  projectContext,
+  imageStyle,
+  imageModel,
 }: SlidePreviewProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
+  const [isImageGeneratorOpen, setIsImageGeneratorOpen] = useState(false);
+  const [showControls, setShowControls] = useState(false);
   
   // Use external fullscreen if provided
   const effectiveFullscreen = externalFullscreen || isFullscreen;
@@ -75,6 +90,61 @@ export function SlidePreview({
     if (e.key === "Escape" && isFullscreen) setIsFullscreen(false);
   };
 
+  // Handle layout change - optimistic update
+  const handleLayoutChange = (layoutId: string) => {
+    if (onUpdateSlide) {
+      onUpdateSlide(selectedSlideIndex, { layoutId });
+    }
+  };
+
+  // Handle font scale change - optimistic update
+  const handleFontScaleChange = (newFontScale: number) => {
+    if (onUpdateSlide) {
+      onUpdateSlide(selectedSlideIndex, { fontScale: newFontScale });
+    }
+  };
+
+  // Handle notes save
+  const handleSaveNotes = (notes: string) => {
+    if (onUpdateSlide) {
+      onUpdateSlide(selectedSlideIndex, { notes });
+    }
+  };
+
+  // Handle image generation
+  const handleImageGenerated = (imageUrl: string) => {
+    if (onUpdateSlide && currentSlide) {
+      // Update the slide's image content
+      const updatedContent = [...(currentSlide.content || [])];
+      const imageIndex = updatedContent.findIndex(c => c.type === "image" || c.regionId === "image" || c.regionId === "diagram");
+      
+      if (imageIndex >= 0) {
+        updatedContent[imageIndex] = {
+          ...updatedContent[imageIndex],
+          data: { url: imageUrl, imageUrl },
+        };
+      } else {
+        updatedContent.push({
+          regionId: "image",
+          type: "image",
+          data: { url: imageUrl, imageUrl },
+        });
+      }
+      
+      onUpdateSlide(selectedSlideIndex, { content: updatedContent, imageUrl });
+    }
+  };
+
+  // Check if current layout supports images
+  const layoutSupportsImage = currentSlide && ["image-left", "image-right", "architecture", "title-cover"].includes(currentSlide.layoutId);
+
+  // Get current image URL
+  const getCurrentImageUrl = () => {
+    if (!currentSlide) return undefined;
+    const imageContent = currentSlide.content?.find(c => c.type === "image" || c.regionId === "image" || c.regionId === "diagram");
+    return imageContent?.data?.url || imageContent?.data?.imageUrl || currentSlide.imageUrl;
+  };
+
   if (!currentSlide) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -83,10 +153,14 @@ export function SlidePreview({
     );
   }
 
-  // External fullscreen mode - just render the slide, no controls
+  // External fullscreen mode - render with controls overlay
   if (externalFullscreen) {
     return (
-      <div className="h-full w-full">
+      <div 
+        className="h-full w-full relative"
+        onMouseEnter={() => setShowControls(true)}
+        onMouseLeave={() => setShowControls(false)}
+      >
         <SlideRenderer
           slide={currentSlide}
           layouts={layouts}
@@ -95,6 +169,41 @@ export function SlidePreview({
           isFullscreen={true}
           fontScale={currentSlide.fontScale || fontScale}
           className="h-full w-full"
+        />
+        
+        {/* Floating controls overlay in fullscreen */}
+        {showControls && onUpdateSlide && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 p-3 bg-background/90 backdrop-blur-sm rounded-lg border shadow-lg z-20">
+            <LayoutSelector 
+              value={currentSlide.layoutId} 
+              onChange={handleLayoutChange} 
+            />
+            <FontScaleControl 
+              value={currentSlide.fontScale || 1} 
+              onChange={handleFontScaleChange} 
+            />
+            {layoutSupportsImage && (
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setIsImageGeneratorOpen(true)}
+              >
+                <ImageIcon className="h-3.5 w-3.5 mr-1" />
+                Image
+              </Button>
+            )}
+          </div>
+        )}
+        
+        {/* Image generator dialog */}
+        <SlideImageGenerator
+          open={isImageGeneratorOpen}
+          onOpenChange={setIsImageGeneratorOpen}
+          onImageGenerated={handleImageGenerated}
+          currentImageUrl={getCurrentImageUrl()}
+          projectContext={projectContext}
+          imageStyle={imageStyle}
+          imageModel={imageModel}
         />
       </div>
     );
@@ -136,6 +245,17 @@ export function SlidePreview({
         </div>
 
         <div className="flex items-center gap-2">
+          {layoutSupportsImage && onUpdateSlide && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsImageGeneratorOpen(true)}
+            >
+              <ImageIcon className="h-4 w-4 mr-1" />
+              {getCurrentImageUrl() ? "Replace Image" : "Add Image"}
+            </Button>
+          )}
+          
           {currentSlide.notes && (
             <Button
               variant={showNotes ? "secondary" : "outline"}
@@ -200,7 +320,19 @@ export function SlidePreview({
         </div>
 
         {/* Speaker notes panel */}
-        {showNotes && currentSlide.notes && (
+        {showNotes && currentSlide.notes && onUpdateSlide && (
+          <Card className="w-1/3">
+            <CardContent className="p-4">
+              <SlideNotesEditor
+                notes={currentSlide.notes || ""}
+                onSave={handleSaveNotes}
+              />
+            </CardContent>
+          </Card>
+        )}
+        
+        {/* Readonly notes when no update handler */}
+        {showNotes && currentSlide.notes && !onUpdateSlide && (
           <Card className="w-1/3">
             <CardContent className="p-4">
               <h4 className="text-sm font-semibold mb-2 text-muted-foreground">
@@ -219,6 +351,17 @@ export function SlidePreview({
         <span>Layout: {currentSlide.layoutId}</span>
         <span>{currentSlide.content?.length || 0} content blocks</span>
       </div>
+      
+      {/* Image generator dialog */}
+      <SlideImageGenerator
+        open={isImageGeneratorOpen}
+        onOpenChange={setIsImageGeneratorOpen}
+        onImageGenerated={handleImageGenerated}
+        currentImageUrl={getCurrentImageUrl()}
+        projectContext={projectContext}
+        imageStyle={imageStyle}
+        imageModel={imageModel}
+      />
     </div>
   );
 }
