@@ -3455,7 +3455,7 @@ export type Database = {
       }
       delete_file_with_token: {
         Args: { p_file_id: string; p_token: string }
-        Returns: boolean
+        Returns: undefined
       }
       delete_migration_with_token: {
         Args: { p_migration_id: string; p_token?: string }
@@ -3489,10 +3489,16 @@ export type Database = {
         Args: { p_repo_id: string }
         Returns: undefined
       }
-      delete_requirement_standard_with_token: {
-        Args: { p_id: string; p_token: string }
-        Returns: undefined
-      }
+      delete_requirement_standard_with_token:
+        | { Args: { p_id: string; p_token: string }; Returns: undefined }
+        | {
+            Args: {
+              p_requirement_id: string
+              p_standard_id: string
+              p_token: string
+            }
+            Returns: undefined
+          }
       delete_requirement_with_token: {
         Args: { p_id: string; p_token: string }
         Returns: undefined
@@ -3620,12 +3626,12 @@ export type Database = {
           status: string
           task_description: string | null
           updated_at: string
-        }[]
+        }
         SetofOptions: {
           from: "*"
           to: "agent_sessions"
-          isOneToOne: false
-          isSetofReturn: true
+          isOneToOne: true
+          isSetofReturn: false
         }
       }
       get_agent_sessions_with_token: {
@@ -6038,27 +6044,48 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      insert_requirement_standard_with_token: {
-        Args: {
-          p_notes?: string
-          p_requirement_id: string
-          p_standard_id: string
-          p_token: string
-        }
-        Returns: {
-          created_at: string
-          id: string
-          notes: string | null
-          requirement_id: string
-          standard_id: string
-        }
-        SetofOptions: {
-          from: "*"
-          to: "requirement_standards"
-          isOneToOne: true
-          isSetofReturn: false
-        }
-      }
+      insert_requirement_standard_with_token:
+        | {
+            Args: {
+              p_requirement_id: string
+              p_standard_id: string
+              p_token: string
+            }
+            Returns: {
+              created_at: string
+              id: string
+              notes: string | null
+              requirement_id: string
+              standard_id: string
+            }
+            SetofOptions: {
+              from: "*"
+              to: "requirement_standards"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
+        | {
+            Args: {
+              p_notes?: string
+              p_requirement_id: string
+              p_standard_id: string
+              p_token: string
+            }
+            Returns: {
+              created_at: string
+              id: string
+              notes: string | null
+              requirement_id: string
+              standard_id: string
+            }
+            SetofOptions: {
+              from: "*"
+              to: "requirement_standards"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
       insert_requirement_with_token: {
         Args: {
           p_parent_id: string
@@ -6217,66 +6244,127 @@ export type Database = {
         Args: { p_project_id: string; p_token: string }
         Returns: Json
       }
-      log_agent_operation_with_token: {
-        Args: {
-          p_details?: Json
-          p_error_message?: string
-          p_file_path: string
-          p_operation_type: string
-          p_session_id: string
-          p_status: string
-          p_token?: string
-        }
-        Returns: {
-          completed_at: string | null
-          created_at: string
-          details: Json | null
-          error_message: string | null
-          file_path: string | null
-          id: string
-          operation_type: string
-          session_id: string
-          status: string
-        }
-        SetofOptions: {
-          from: "*"
-          to: "agent_file_operations"
-          isOneToOne: true
-          isSetofReturn: false
-        }
-      }
-      log_repo_commit_with_token: {
-        Args: {
-          p_branch: string
-          p_commit_message: string
-          p_commit_sha: string
-          p_files_changed: number
-          p_repo_id: string
-          p_token: string
-        }
-        Returns: {
-          branch: string
-          commit_message: string
-          commit_sha: string
-          committed_at: string
-          committed_by: string | null
-          created_at: string
-          files_changed: number
-          files_metadata: Json | null
-          github_sha: string | null
-          id: string
-          parent_commit_id: string | null
-          project_id: string
-          pushed_at: string | null
-          repo_id: string
-        }
-        SetofOptions: {
-          from: "*"
-          to: "repo_commits"
-          isOneToOne: true
-          isSetofReturn: false
-        }
-      }
+      log_agent_operation_with_token:
+        | {
+            Args: {
+              p_details?: Json
+              p_error_message?: string
+              p_file_path: string
+              p_operation_type: string
+              p_session_id: string
+              p_status: string
+              p_token?: string
+            }
+            Returns: {
+              completed_at: string | null
+              created_at: string
+              details: Json | null
+              error_message: string | null
+              file_path: string | null
+              id: string
+              operation_type: string
+              session_id: string
+              status: string
+            }
+            SetofOptions: {
+              from: "*"
+              to: "agent_file_operations"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
+        | {
+            Args: {
+              p_details?: Json
+              p_file_path?: string
+              p_operation_type: string
+              p_session_id: string
+              p_token: string
+            }
+            Returns: {
+              completed_at: string | null
+              created_at: string
+              details: Json | null
+              error_message: string | null
+              file_path: string | null
+              id: string
+              operation_type: string
+              session_id: string
+              status: string
+            }
+            SetofOptions: {
+              from: "*"
+              to: "agent_file_operations"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
+      log_repo_commit_with_token:
+        | {
+            Args: {
+              p_branch: string
+              p_commit_message: string
+              p_commit_sha: string
+              p_files_changed: number
+              p_repo_id: string
+              p_token: string
+            }
+            Returns: {
+              branch: string
+              commit_message: string
+              commit_sha: string
+              committed_at: string
+              committed_by: string | null
+              created_at: string
+              files_changed: number
+              files_metadata: Json | null
+              github_sha: string | null
+              id: string
+              parent_commit_id: string | null
+              project_id: string
+              pushed_at: string | null
+              repo_id: string
+            }
+            SetofOptions: {
+              from: "*"
+              to: "repo_commits"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
+        | {
+            Args: {
+              p_branch: string
+              p_files_changed?: Json
+              p_message: string
+              p_pushed?: boolean
+              p_repo_id: string
+              p_sha: string
+              p_token: string
+            }
+            Returns: {
+              branch: string
+              commit_message: string
+              commit_sha: string
+              committed_at: string
+              committed_by: string | null
+              created_at: string
+              files_changed: number
+              files_metadata: Json | null
+              github_sha: string | null
+              id: string
+              parent_commit_id: string | null
+              project_id: string
+              pushed_at: string | null
+              repo_id: string
+            }
+            SetofOptions: {
+              from: "*"
+              to: "repo_commits"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
       mark_commits_pushed_with_token: {
         Args: {
           p_branch?: string
@@ -6340,29 +6428,51 @@ export type Database = {
               isSetofReturn: false
             }
           }
-      move_file_with_token: {
-        Args: { p_file_id: string; p_new_path: string; p_token: string }
-        Returns: {
-          content_length: number | null
-          created_at: string | null
-          created_by: string | null
-          file_path: string
-          id: string
-          is_binary: boolean
-          new_content: string | null
-          old_content: string | null
-          old_path: string | null
-          operation_type: string
-          project_id: string
-          repo_id: string
-        }
-        SetofOptions: {
-          from: "*"
-          to: "repo_staging"
-          isOneToOne: true
-          isSetofReturn: false
-        }
-      }
+      move_file_with_token:
+        | {
+            Args: { p_file_id: string; p_new_path: string; p_token: string }
+            Returns: {
+              content_length: number | null
+              created_at: string | null
+              created_by: string | null
+              file_path: string
+              id: string
+              is_binary: boolean
+              new_content: string | null
+              old_content: string | null
+              old_path: string | null
+              operation_type: string
+              project_id: string
+              repo_id: string
+            }
+            SetofOptions: {
+              from: "*"
+              to: "repo_staging"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
+        | {
+            Args: { p_file_id: string; p_new_path: string; p_token: string }
+            Returns: {
+              content: string
+              content_length: number | null
+              created_at: string
+              id: string
+              is_binary: boolean
+              last_commit_sha: string | null
+              path: string
+              project_id: string
+              repo_id: string
+              updated_at: string
+            }
+            SetofOptions: {
+              from: "*"
+              to: "repo_files"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
       publish_project_to_gallery: {
         Args: {
           p_category?: string
@@ -6436,7 +6546,7 @@ export type Database = {
       }
       reset_repo_files_with_token: {
         Args: { p_repo_id: string; p_token: string }
-        Returns: boolean
+        Returns: undefined
       }
       resolve_testing_log_with_token: {
         Args: { p_log_id: string; p_token?: string }
@@ -6495,10 +6605,15 @@ export type Database = {
         Args: { p_token: string; p_token_id: string }
         Returns: string
       }
-      rollback_to_commit_with_token: {
-        Args: { p_commit_id: string; p_repo_id: string; p_token: string }
-        Returns: boolean
-      }
+      rollback_to_commit_with_token:
+        | {
+            Args: { p_commit_id: string; p_repo_id: string; p_token: string }
+            Returns: boolean
+          }
+        | {
+            Args: { p_commit_sha: string; p_repo_id: string; p_token: string }
+            Returns: undefined
+          }
       save_anonymous_project_to_user: {
         Args: { p_project_id: string; p_share_token: string }
         Returns: {
@@ -6729,58 +6844,107 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      update_agent_operation_status_with_token: {
-        Args: {
-          p_error_message?: string
-          p_operation_id: string
-          p_status: string
-          p_token?: string
-        }
-        Returns: {
-          completed_at: string | null
-          created_at: string
-          details: Json | null
-          error_message: string | null
-          file_path: string | null
-          id: string
-          operation_type: string
-          session_id: string
-          status: string
-        }
-        SetofOptions: {
-          from: "*"
-          to: "agent_file_operations"
-          isOneToOne: true
-          isSetofReturn: false
-        }
-      }
-      update_agent_session_status_with_token: {
-        Args: {
-          p_completed_at?: string
-          p_session_id: string
-          p_status: string
-          p_token: string
-        }
-        Returns: {
-          abort_requested: boolean | null
-          completed_at: string | null
-          created_at: string
-          created_by: string | null
-          id: string
-          mode: string
-          project_id: string
-          started_at: string
-          status: string
-          task_description: string | null
-          updated_at: string
-        }
-        SetofOptions: {
-          from: "*"
-          to: "agent_sessions"
-          isOneToOne: true
-          isSetofReturn: false
-        }
-      }
+      update_agent_operation_status_with_token:
+        | {
+            Args: {
+              p_error_message?: string
+              p_operation_id: string
+              p_status: string
+              p_token?: string
+            }
+            Returns: {
+              completed_at: string | null
+              created_at: string
+              details: Json | null
+              error_message: string | null
+              file_path: string | null
+              id: string
+              operation_type: string
+              session_id: string
+              status: string
+            }
+            SetofOptions: {
+              from: "*"
+              to: "agent_file_operations"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
+        | {
+            Args: {
+              p_error_message?: string
+              p_operation_id: string
+              p_status: string
+              p_token: string
+            }
+            Returns: {
+              completed_at: string | null
+              created_at: string
+              details: Json | null
+              error_message: string | null
+              file_path: string | null
+              id: string
+              operation_type: string
+              session_id: string
+              status: string
+            }
+            SetofOptions: {
+              from: "*"
+              to: "agent_file_operations"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
+      update_agent_session_status_with_token:
+        | {
+            Args: { p_session_id: string; p_status: string; p_token: string }
+            Returns: {
+              abort_requested: boolean | null
+              completed_at: string | null
+              created_at: string
+              created_by: string | null
+              id: string
+              mode: string
+              project_id: string
+              started_at: string
+              status: string
+              task_description: string | null
+              updated_at: string
+            }
+            SetofOptions: {
+              from: "*"
+              to: "agent_sessions"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
+        | {
+            Args: {
+              p_completed_at?: string
+              p_session_id: string
+              p_status: string
+              p_token: string
+            }
+            Returns: {
+              abort_requested: boolean | null
+              completed_at: string | null
+              created_at: string
+              created_by: string | null
+              id: string
+              mode: string
+              project_id: string
+              started_at: string
+              status: string
+              task_description: string | null
+              updated_at: string
+            }
+            SetofOptions: {
+              from: "*"
+              to: "agent_sessions"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
       update_artifact_collaboration_with_token: {
         Args: {
           p_collaboration_id: string
@@ -6999,40 +7163,7 @@ export type Database = {
       }
       update_deployment_secrets_with_token: {
         Args: { p_deployment_id: string; p_secrets: Json; p_token: string }
-        Returns: {
-          branch: string | null
-          build_command: string | null
-          build_folder: string
-          created_at: string
-          created_by: string | null
-          disk_enabled: boolean | null
-          disk_mount_path: string | null
-          disk_name: string | null
-          disk_size_gb: number | null
-          env_vars: Json | null
-          environment: Database["public"]["Enums"]["deployment_environment"]
-          id: string
-          last_deployed_at: string | null
-          name: string
-          platform: Database["public"]["Enums"]["deployment_platform"]
-          project_id: string
-          project_type: string
-          render_deploy_id: string | null
-          render_service_id: string | null
-          repo_id: string | null
-          run_command: string
-          run_folder: string
-          secrets: Json | null
-          status: Database["public"]["Enums"]["deployment_status"]
-          updated_at: string
-          url: string | null
-        }
-        SetofOptions: {
-          from: "*"
-          to: "project_deployments"
-          isOneToOne: true
-          isSetofReturn: false
-        }
+        Returns: undefined
       }
       update_deployment_with_token: {
         Args: {
@@ -7613,13 +7744,35 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      upsert_files_batch_with_token: {
-        Args: { p_files: Json; p_repo_id: string; p_token: string }
-        Returns: {
-          files_updated: number
-          success: boolean
-        }[]
-      }
+      upsert_files_batch_with_token:
+        | {
+            Args: { p_files: Json; p_repo_id: string; p_token: string }
+            Returns: {
+              files_updated: number
+              success: boolean
+            }[]
+          }
+        | {
+            Args: { p_files: Json; p_repo_id: string; p_token: string }
+            Returns: {
+              content: string
+              content_length: number | null
+              created_at: string
+              id: string
+              is_binary: boolean
+              last_commit_sha: string | null
+              path: string
+              project_id: string
+              repo_id: string
+              updated_at: string
+            }[]
+            SetofOptions: {
+              from: "*"
+              to: "repo_files"
+              isOneToOne: false
+              isSetofReturn: true
+            }
+          }
       validate_file_access: {
         Args: { p_file_id: string; p_token: string }
         Returns: boolean
