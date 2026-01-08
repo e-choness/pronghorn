@@ -59,9 +59,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (response.error) {
         console.error("Signup error:", response.error);
-        // Try to extract the actual error message from the response data
-        // When edge function returns non-2xx, the error body is in response.data
-        const errorMessage = response.data?.error || response.error.message || "Failed to create account";
+        // For FunctionsHttpError, try to get the actual error from the response context
+        let errorMessage = "Failed to create account";
+        try {
+          // Check if error has context with json() method (FunctionsHttpError)
+          if (response.error.context && typeof response.error.context.json === 'function') {
+            const errorBody = await response.error.context.json();
+            errorMessage = errorBody?.error || response.error.message;
+          } else if (response.data?.error) {
+            errorMessage = response.data.error;
+          } else {
+            errorMessage = response.error.message;
+          }
+        } catch {
+          errorMessage = response.error.message || "Failed to create account";
+        }
         return { error: { message: errorMessage } };
       }
 
