@@ -159,8 +159,16 @@ export default function Auth() {
         body: { code }
       });
       if (error) {
-        // Try to extract the actual error message from FunctionsHttpError
-        const errorMessage = error.message || 'Failed to validate signup code';
+        // For FunctionsHttpError, try to get the actual error from the response context
+        let errorMessage = 'Invalid signup code';
+        try {
+          if (error.context && typeof error.context.json === 'function') {
+            const errorBody = await error.context.json();
+            errorMessage = errorBody?.error || 'Invalid signup code';
+          }
+        } catch {
+          // Use default message
+        }
         return { valid: false, error: errorMessage };
       }
       return { valid: data?.valid === true };
