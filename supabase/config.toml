@@ -164,3 +164,6 @@ verify_jwt = false
 
 [functions.validate-signup-code]
 verify_jwt = false
+
+[functions.update-signup-validated]
+verify_jwt = false
