@@ -66,7 +66,14 @@ const handler = async (req: Request): Promise<Response> => {
 
       if (linkError) {
         console.error("Error generating signup link:", linkError);
-        throw new Error(`Failed to generate verification link: ${linkError.message}`);
+        // Return the actual Supabase auth error message directly
+        return new Response(
+          JSON.stringify({ error: linkError.message }),
+          {
+            status: 422,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          }
+        );
       }
 
       // Use the action_link directly - it goes to Supabase's /auth/v1/verify endpoint
@@ -92,7 +99,13 @@ const handler = async (req: Request): Promise<Response> => {
 
       if (linkError) {
         console.error("Error generating recovery link:", linkError);
-        throw new Error(`Failed to generate recovery link: ${linkError.message}`);
+        return new Response(
+          JSON.stringify({ error: linkError.message }),
+          {
+            status: 422,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          }
+        );
       }
 
       // Use the action_link directly
