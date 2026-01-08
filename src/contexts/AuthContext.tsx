@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useMemo, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -6,6 +6,7 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  isSignupValidated: boolean;
   signUp: (email: string, password: string, signupValidated?: boolean) => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signInWithGoogle: () => Promise<{ error: any }>;
@@ -13,6 +14,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: any }>;
   updatePassword: (newPassword: string) => Promise<{ error: any }>;
+  validateSignupCode: (code: string) => Promise<{ error: any }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -157,18 +159,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error };
   };
 
+  // Check if user has validated their signup code
+  const isSignupValidated = useMemo(() => {
+    if (!user) return true; // Not logged in, no need to check
+    return user.user_metadata?.signup_validated === true;
+  }, [user]);
+
+  // Validate signup code and update user metadata
+  const validateSignupCode = async (code: string) => {
+    try {
+      const { error } = await supabase.functions.invoke('update-signup-validated', {
+        body: { code }
+      });
+      
+      if (error) {
+        return { error };
+      }
+
+      // Refresh session to get updated metadata
+      const { error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) {
+        console.warn("Failed to refresh session after validation:", refreshError);
+      }
+      
+      return { error: null };
+    } catch (e: any) {
+      return { error: { message: e.message || "Failed to validate code" } };
+    }
+  };
+
   return (
     <AuthContext.Provider value={{ 
       user, 
       session, 
-      loading, 
+      loading,
+      isSignupValidated,
       signUp, 
       signIn, 
       signInWithGoogle, 
       signInWithAzure, 
       signOut, 
       resetPassword, 
-      updatePassword
+      updatePassword,
+      validateSignupCode
     }}>
       {children}
     </AuthContext.Provider>

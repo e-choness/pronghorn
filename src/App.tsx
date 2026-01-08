@@ -3,6 +3,7 @@ import { Routes, Route } from "react-router-dom";
 import { ScrollToTop } from "./components/ScrollToTop";
 import { PWAUpdatePrompt } from "./components/PWAUpdatePrompt";
 import { PageLoader } from "./components/PageLoader";
+import { RequireSignupValidation } from "./components/auth/RequireSignupValidation";
 
 // Eagerly loaded (lightweight pages)
 import Landing from "./pages/Landing";
@@ -21,6 +22,13 @@ const BuildBooks = lazy(() => import("./pages/BuildBooks"));
 const BuildBookDetail = lazy(() => import("./pages/BuildBookDetail"));
 const BuildBookEditor = lazy(() => import("./pages/BuildBookEditor"));
 const Settings = lazy(() => import("./pages/Settings"));
+
+// Helper to wrap components with signup validation
+const withValidation = (Component: React.ComponentType) => (
+  <RequireSignupValidation>
+    <Component />
+  </RequireSignupValidation>
+);
 
 // Project pages (all use heavy libraries like Monaco, ReactFlow, etc.)
 const Requirements = lazy(() => import("./pages/project/Requirements"));
@@ -43,51 +51,54 @@ const App = () => (
     <PWAUpdatePrompt />
     <Suspense fallback={<PageLoader />}>
       <Routes>
+        {/* Public routes - no signup validation required */}
         <Route path="/" element={<Landing />} />
         <Route path="/auth" element={<Auth />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/gallery" element={<Gallery />} />
-        <Route path="/standards" element={<Standards />} />
-        <Route path="/tech-stacks" element={<TechStacks />} />
-        <Route path="/build-books" element={<BuildBooks />} />
-        <Route path="/build-books/new" element={<BuildBookEditor />} />
-        <Route path="/build-books/:id" element={<BuildBookDetail />} />
-        <Route path="/build-books/:id/edit" element={<BuildBookEditor />} />
         <Route path="/terms" element={<Terms />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/license" element={<License />} />
-        <Route path="/settings/organization" element={<Settings />} />
-        <Route path="/settings/profile" element={<Settings />} />
+        
+        {/* Protected routes - require signup validation */}
+        <Route path="/dashboard" element={withValidation(Dashboard)} />
+        <Route path="/gallery" element={withValidation(Gallery)} />
+        <Route path="/standards" element={withValidation(Standards)} />
+        <Route path="/tech-stacks" element={withValidation(TechStacks)} />
+        <Route path="/build-books" element={withValidation(BuildBooks)} />
+        <Route path="/build-books/new" element={withValidation(BuildBookEditor)} />
+        <Route path="/build-books/:id" element={withValidation(BuildBookDetail)} />
+        <Route path="/build-books/:id/edit" element={withValidation(BuildBookEditor)} />
+        <Route path="/settings/organization" element={withValidation(Settings)} />
+        <Route path="/settings/profile" element={withValidation(Settings)} />
         
         {/* Project Routes - Standard (authenticated users) */}
-        <Route path="/project/:projectId/settings" element={<ProjectSettings />} />
-        <Route path="/project/:projectId/artifacts" element={<Artifacts />} />
-        <Route path="/project/:projectId/chat" element={<Chat />} />
-        <Route path="/project/:projectId/requirements" element={<Requirements />} />
-        <Route path="/project/:projectId/standards" element={<ProjectStandards />} />
-        <Route path="/project/:projectId/canvas" element={<Canvas />} />
-        <Route path="/project/:projectId/audit" element={<Audit />} />
-        <Route path="/project/:projectId/build" element={<Build />} />
-        <Route path="/project/:projectId/repository" element={<Repository />} />
-        <Route path="/project/:projectId/specifications" element={<Specifications />} />
-        <Route path="/project/:projectId/database" element={<Database />} />
-        <Route path="/project/:projectId/deploy" element={<Deploy />} />
-        <Route path="/project/:projectId/present" element={<Present />} />
+        <Route path="/project/:projectId/settings" element={withValidation(ProjectSettings)} />
+        <Route path="/project/:projectId/artifacts" element={withValidation(Artifacts)} />
+        <Route path="/project/:projectId/chat" element={withValidation(Chat)} />
+        <Route path="/project/:projectId/requirements" element={withValidation(Requirements)} />
+        <Route path="/project/:projectId/standards" element={withValidation(ProjectStandards)} />
+        <Route path="/project/:projectId/canvas" element={withValidation(Canvas)} />
+        <Route path="/project/:projectId/audit" element={withValidation(Audit)} />
+        <Route path="/project/:projectId/build" element={withValidation(Build)} />
+        <Route path="/project/:projectId/repository" element={withValidation(Repository)} />
+        <Route path="/project/:projectId/specifications" element={withValidation(Specifications)} />
+        <Route path="/project/:projectId/database" element={withValidation(Database)} />
+        <Route path="/project/:projectId/deploy" element={withValidation(Deploy)} />
+        <Route path="/project/:projectId/present" element={withValidation(Present)} />
         
         {/* Project Routes - With Token (shared access via path-based token) */}
-        <Route path="/project/:projectId/settings/t/:token" element={<ProjectSettings />} />
-        <Route path="/project/:projectId/artifacts/t/:token" element={<Artifacts />} />
-        <Route path="/project/:projectId/chat/t/:token" element={<Chat />} />
-        <Route path="/project/:projectId/requirements/t/:token" element={<Requirements />} />
-        <Route path="/project/:projectId/standards/t/:token" element={<ProjectStandards />} />
-        <Route path="/project/:projectId/canvas/t/:token" element={<Canvas />} />
-        <Route path="/project/:projectId/audit/t/:token" element={<Audit />} />
-        <Route path="/project/:projectId/build/t/:token" element={<Build />} />
-        <Route path="/project/:projectId/repository/t/:token" element={<Repository />} />
-        <Route path="/project/:projectId/specifications/t/:token" element={<Specifications />} />
-        <Route path="/project/:projectId/database/t/:token" element={<Database />} />
-        <Route path="/project/:projectId/deploy/t/:token" element={<Deploy />} />
-        <Route path="/project/:projectId/present/t/:token" element={<Present />} />
+        <Route path="/project/:projectId/settings/t/:token" element={withValidation(ProjectSettings)} />
+        <Route path="/project/:projectId/artifacts/t/:token" element={withValidation(Artifacts)} />
+        <Route path="/project/:projectId/chat/t/:token" element={withValidation(Chat)} />
+        <Route path="/project/:projectId/requirements/t/:token" element={withValidation(Requirements)} />
+        <Route path="/project/:projectId/standards/t/:token" element={withValidation(ProjectStandards)} />
+        <Route path="/project/:projectId/canvas/t/:token" element={withValidation(Canvas)} />
+        <Route path="/project/:projectId/audit/t/:token" element={withValidation(Audit)} />
+        <Route path="/project/:projectId/build/t/:token" element={withValidation(Build)} />
+        <Route path="/project/:projectId/repository/t/:token" element={withValidation(Repository)} />
+        <Route path="/project/:projectId/specifications/t/:token" element={withValidation(Specifications)} />
+        <Route path="/project/:projectId/database/t/:token" element={withValidation(Database)} />
+        <Route path="/project/:projectId/deploy/t/:token" element={withValidation(Deploy)} />
+        <Route path="/project/:projectId/present/t/:token" element={withValidation(Present)} />
         
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
