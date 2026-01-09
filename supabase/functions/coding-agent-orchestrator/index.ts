@@ -168,7 +168,7 @@ function generateToolsListText(manifest: ToolsManifest, exposeProject: boolean):
   // Project Exploration Tools (only if exposed)
   if (exposeProject) {
     lines.push("\n## PROJECT EXPLORATION TOOLS (READ-ONLY)\n");
-    lines.push("In addition to the repository, you have READ-ONLY access to explore the entire project via these additional tools:\n");
+    lines.push("In addition to the repository files, you have READ-ONLY access to explore the entire project via these additional tools:\n");
     for (const [name, tool] of Object.entries(manifest.project_exploration_tools)) {
       if (!tool.enabled) continue;
       lines.push(`**${name}** [${tool.category}]`);
