@@ -1,65 +1,175 @@
 {
   "id": "coding-agent-tools",
   "name": "Coding Agent Tools Manifest",
-  "version": "1.0.0",
-  "description": "Available file operations and tools for the coding agent",
+  "version": "1.1.0",
+  "description": "Unified tool definitions including names, descriptions, parameters, and categories",
   "updatedAt": "2025-01-09T00:00:00Z",
 
   "file_operations": {
     "list_files": {
       "description": "List all files with metadata (id, path, updated_at). MUST be called FIRST to load file structure. For session-created files, IDs are kept current.",
       "category": "discovery",
-      "enabled": true
+      "enabled": true,
+      "params": {
+        "path_prefix": {
+          "type": "string | null",
+          "required": false,
+          "description": "Filter files by path prefix (e.g., 'src/components')"
+        }
+      }
     },
     "wildcard_search": {
       "description": "Multi-term search across all files. Returns ranked results by match count. Use for finding files by concept.",
       "category": "discovery",
-      "enabled": true
+      "enabled": true,
+      "params": {
+        "query": {
+          "type": "string",
+          "required": true,
+          "description": "Multi-term search query to find files by concept"
+        }
+      }
     },
     "search": {
       "description": "Search file paths and content by single keyword.",
       "category": "discovery",
-      "enabled": true
+      "enabled": true,
+      "params": {
+        "keyword": {
+          "type": "string",
+          "required": true,
+          "description": "Single keyword to search in file paths and content"
+        }
+      }
     },
     "read_file": {
       "description": "Read complete content of a single file. Returns content WITH LINE NUMBERS prefixed as <<N>>. Can use file_id OR path parameter. For newly created files, prefer using path.",
       "category": "read",
-      "enabled": true
+      "enabled": true,
+      "params": {
+        "file_id": {
+          "type": "string",
+          "required": false,
+          "description": "UUID of file from list_files result"
+        },
+        "path": {
+          "type": "string",
+          "required": false,
+          "description": "File path for session-created files (alternative to file_id)"
+        }
+      }
     },
     "edit_lines": {
       "description": "Edit specific line range in a file and stage the change. Use line numbers from <<N>> prefix in read_file output. Can use file_id OR path parameter. For newly created files, prefer using path.",
       "category": "write",
-      "enabled": true
+      "enabled": true,
+      "params": {
+        "file_id": {
+          "type": "string",
+          "required": false,
+          "description": "UUID of file from list_files result"
+        },
+        "path": {
+          "type": "string",
+          "required": false,
+          "description": "File path for session-created files (alternative to file_id)"
+        },
+        "start_line": {
+          "type": "integer",
+          "required": true,
+          "description": "Starting line number (1-based, from <<N>> prefix in read_file)"
+        },
+        "end_line": {
+          "type": "integer",
+          "required": true,
+          "description": "Ending line number (inclusive)"
+        },
+        "new_content": {
+          "type": "string",
+          "required": true,
+          "description": "Replacement content for the specified line range"
+        }
+      }
     },
     "create_file": {
       "description": "Create new file and stage as add operation.",
       "category": "write",
-      "enabled": true
+      "enabled": true,
+      "params": {
+        "path": {
+          "type": "string",
+          "required": true,
+          "description": "Full path for the new file (e.g., 'src/components/NewComponent.tsx')"
+        },
+        "content": {
+          "type": "string",
+          "required": true,
+          "description": "Complete content for the new file"
+        }
+      }
     },
     "delete_file": {
       "description": "Delete file and stage as delete operation.",
       "category": "write",
-      "enabled": true
+      "enabled": true,
+      "params": {
+        "file_id": {
+          "type": "string",
+          "required": false,
+          "description": "UUID of file to delete from list_files result"
+        },
+        "path": {
+          "type": "string",
+          "required": false,
+          "description": "File path to delete (alternative to file_id)"
+        }
+      }
     },
     "move_file": {
       "description": "Move or rename file to a new path (handles directory moves properly).",
       "category": "write",
-      "enabled": true
+      "enabled": true,
+      "params": {
+        "file_id": {
+          "type": "string",
+          "required": false,
+          "description": "UUID of file to move from list_files result"
+        },
+        "path": {
+          "type": "string",
+          "required": false,
+          "description": "Current file path (alternative to file_id)"
+        },
+        "new_path": {
+          "type": "string",
+          "required": true,
+          "description": "New path for the file (handles directory moves properly)"
+        }
+      }
     },
     "get_staged_changes": {
       "description": "View all currently staged changes. Essential for avoiding duplicate edits and understanding current state before making changes.",
       "category": "staging",
-      "enabled": true
+      "enabled": true,
+      "params": {}
     },
     "unstage_file": {
       "description": "Discard a specific staged change by file_path. Use when user requests reverting a file or when a change needs to be redone.",
       "category": "staging",
-      "enabled": true
+      "enabled": true,
+      "params": {
+        "file_path": {
+          "type": "string",
+          "required": true,
+          "description": "File path to unstage (discard staged change)"
+        }
+      }
     },
     "discard_all_staged": {
       "description": "Discard ALL staged changes. Use with EXTREME CAUTION - only when user explicitly requests full reset.",
       "category": "staging",
-      "enabled": true
+      "enabled": true,
+      "params": {}
     }
   },
 
@@ -67,17 +177,32 @@
     "project_inventory": {
       "description": "Returns counts and brief previews for ALL project elements in one call. Use FIRST to understand project scope.",
       "category": "project",
-      "enabled": true
+      "enabled": true,
+      "params": {}
     },
     "project_category": {
       "description": "Load ALL items from a specific category with full details. Categories: requirements, chat_sessions, standards, tech_stacks, artifacts, canvas_nodes, etc.",
       "category": "project",
-      "enabled": true
+      "enabled": true,
+      "params": {
+        "category": {
+          "type": "string",
+          "required": true,
+          "description": "Category name: requirements, chat_sessions, standards, tech_stacks, artifacts, canvas_nodes, etc."
+        }
+      }
     },
     "project_elements": {
       "description": "Load SPECIFIC elements by their IDs with full details. Pass array of {category, id} pairs.",
       "category": "project",
-      "enabled": true
+      "enabled": true,
+      "params": {
+        "elements": {
+          "type": "array",
+          "required": true,
+          "description": "Array of {category, id} pairs to fetch specific elements"
+        }
+      }
     }
   }
 }
