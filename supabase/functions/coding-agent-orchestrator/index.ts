@@ -18,6 +18,28 @@ interface AgentPromptSection {
   enabled?: boolean;
 }
 
+interface ToolParamDefinition {
+  type: string;
+  required?: boolean;
+  description: string;
+}
+
+interface ToolDefinition {
+  description: string;
+  category: string;
+  enabled: boolean;
+  params: Record<string, ToolParamDefinition>;
+}
+
+interface ToolsManifest {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  file_operations: Record<string, ToolDefinition>;
+  project_exploration_tools: Record<string, ToolDefinition>;
+}
+
 interface CustomToolDescriptions {
   file_operations?: Record<string, string>;
   project_exploration_tools?: Record<string, string>;
@@ -120,8 +142,107 @@ function parseAgentResponseText(rawText: string): any {
   };
 }
 
-// Generate Grok/xAI structured output schema for coding agent responses
-function getGrokResponseSchema() {
+// Generate tool list text from manifest for prompt
+function generateToolsListText(manifest: ToolsManifest, exposeProject: boolean): string {
+  const lines: string[] = ["=== AVAILABLE TOOLS ===\n"];
+  
+  // File Operations
+  lines.push("## FILE OPERATIONS\n");
+  for (const [name, tool] of Object.entries(manifest.file_operations)) {
+    if (!tool.enabled) continue;
+    lines.push(`**${name}** [${tool.category}]`);
+    lines.push(`  ${tool.description}`);
+    if (Object.keys(tool.params).length > 0) {
+      lines.push(`  Parameters:`);
+      for (const [paramName, param] of Object.entries(tool.params)) {
+        const required = param.required ? "(required)" : "(optional)";
+        lines.push(`    - ${paramName}: ${param.type} ${required} - ${param.description}`);
+      }
+    }
+    lines.push("");
+  }
+  
+  // Project Exploration Tools (only if exposed)
+  if (exposeProject) {
+    lines.push("\n## PROJECT EXPLORATION TOOLS (READ-ONLY)\n");
+    lines.push("You have READ-ONLY access to explore the entire project via these additional tools:\n");
+    for (const [name, tool] of Object.entries(manifest.project_exploration_tools)) {
+      if (!tool.enabled) continue;
+      lines.push(`**${name}** [${tool.category}]`);
+      lines.push(`  ${tool.description}`);
+      if (Object.keys(tool.params).length > 0) {
+        lines.push(`  Parameters:`);
+        for (const [paramName, param] of Object.entries(tool.params)) {
+          const required = param.required ? "(required)" : "(optional)";
+          lines.push(`    - ${paramName}: ${param.type} ${required} - ${param.description}`);
+        }
+      }
+      lines.push("");
+    }
+    lines.push("\nPROJECT EXPLORATION WORKFLOW:");
+    lines.push("1. Start with project_inventory to see counts and previews of all categories");
+    lines.push("2. Use project_category to load full details of categories you need");
+    lines.push("3. Use project_elements to fetch specific items by ID");
+    lines.push("\nThese tools are READ-ONLY. Use them to understand context and inform your file operations.");
+  }
+  
+  return lines.join("\n");
+}
+
+// Generate response schema text for prompt
+function generateResponseSchemaText(manifest: ToolsManifest, exposeProject: boolean): string {
+  const allToolNames = [
+    ...Object.keys(manifest.file_operations),
+    ...(exposeProject ? Object.keys(manifest.project_exploration_tools) : [])
+  ];
+  
+  return `When responding, structure your response as:
+{
+  "reasoning": "Your chain-of-thought reasoning about what to do next",
+  "operations": [
+    {
+      "type": "${allToolNames[0] || "list_files"}" | "${allToolNames.slice(1, 4).join('" | "')}" | ...,
+      "params": { /* tool-specific parameters from the AVAILABLE TOOLS section */ }
+    }
+  ],
+  "blackboard_entry": {
+    "entry_type": "planning" | "progress" | "decision" | "reasoning" | "next_steps" | "reflection",
+    "content": "Your memory/reflection for this step"
+  },
+  "status": "in_progress" | "completed" | "requires_commit"
+}
+
+Available operation types: ${allToolNames.join(", ")}`;
+}
+
+// Generate Grok/xAI structured output schema dynamically from manifest
+function generateGrokSchema(manifest: ToolsManifest, exposeProject: boolean) {
+  const allToolNames = [
+    ...Object.keys(manifest.file_operations),
+    ...(exposeProject ? Object.keys(manifest.project_exploration_tools) : [])
+  ];
+  
+  // Build params properties from manifest
+  const paramsProperties: Record<string, any> = {};
+  const allTools = { ...manifest.file_operations, ...(exposeProject ? manifest.project_exploration_tools : {}) };
+  
+  for (const tool of Object.values(allTools)) {
+    for (const [paramName, param] of Object.entries(tool.params)) {
+      if (!paramsProperties[paramName]) {
+        // Convert type string to JSON schema type
+        let jsonType: any = "string";
+        if (param.type.includes("null")) {
+          jsonType = ["string", "null"];
+        } else if (param.type === "integer") {
+          jsonType = "integer";
+        } else if (param.type === "array") {
+          jsonType = "array";
+        }
+        paramsProperties[paramName] = { type: jsonType, description: param.description };
+      }
+    }
+  }
+  
   return {
     type: "json_schema",
     json_schema: {
@@ -141,45 +262,18 @@ function getGrokResponseSchema() {
               properties: {
                 type: {
                   type: "string",
-                  enum: [
-                  "list_files",
-                  "wildcard_search",
-                  "search",
-                  "read_file",
-                  "edit_lines",
-                  "create_file",
-                  "delete_file",
-                  "move_file",
-                  "get_staged_changes",
-                  "unstage_file",
-                  "discard_all_staged",
-                  "project_inventory",
-                  "project_category",
-                  "project_elements",
-                ],
-              },
-              params: {
-                type: "object",
-                description: "Operation-specific parameters. Only include parameters relevant to the operation type.",
-                properties: {
-                  path_prefix: { type: ["string", "null"], description: "Filter files by path prefix (for list_files)" },
-                  query: { type: "string", description: "Multi-term search query (for wildcard_search)" },
-                  keyword: { type: "string", description: "Single keyword to search (for search)" },
-                  file_id: { type: "string", description: "UUID of file from list_files (for read_file, edit_lines, delete_file, move_file)" },
-                  path: { type: "string", description: "File path for session-created files or create_file" },
-                  start_line: { type: "integer", description: "Starting line number 1-based (for edit_lines)" },
-                  end_line: { type: "integer", description: "Ending line number inclusive (for edit_lines)" },
-                  new_content: { type: "string", description: "Replacement content (for edit_lines)" },
-                  content: { type: "string", description: "File content (for create_file)" },
-                  new_path: { type: "string", description: "New file path (for move_file)" },
-                  file_path: { type: "string", description: "File path to unstage (for unstage_file)" },
+                  enum: allToolNames,
+                },
+                params: {
+                  type: "object",
+                  description: "Operation-specific parameters. Only include parameters relevant to the operation type.",
+                  properties: paramsProperties,
                 },
               },
+              required: ["type", "params"],
             },
-            required: ["type", "params"],
           },
-        },
-        blackboard_entry: {
+          blackboard_entry: {
             type: "object",
             properties: {
               entry_type: {
@@ -201,8 +295,33 @@ function getGrokResponseSchema() {
   };
 }
 
-// Generate Claude/Anthropic strict tool use schema for coding agent responses
-function getClaudeResponseTool() {
+// Generate Claude/Anthropic tool schema dynamically from manifest
+function generateClaudeSchema(manifest: ToolsManifest, exposeProject: boolean) {
+  const allToolNames = [
+    ...Object.keys(manifest.file_operations),
+    ...(exposeProject ? Object.keys(manifest.project_exploration_tools) : [])
+  ];
+  
+  // Build params properties from manifest
+  const paramsProperties: Record<string, any> = {};
+  const allTools = { ...manifest.file_operations, ...(exposeProject ? manifest.project_exploration_tools : {}) };
+  
+  for (const tool of Object.values(allTools)) {
+    for (const [paramName, param] of Object.entries(tool.params)) {
+      if (!paramsProperties[paramName]) {
+        let jsonType: any = "string";
+        if (param.type.includes("null")) {
+          jsonType = ["string", "null"];
+        } else if (param.type === "integer") {
+          jsonType = "integer";
+        } else if (param.type === "array") {
+          jsonType = "array";
+        }
+        paramsProperties[paramName] = { type: jsonType, description: param.description };
+      }
+    }
+  }
+  
   return {
     name: "respond_with_actions",
     description: "Return your reasoning, file operations, and status as structured output. You MUST use this tool to respond.",
@@ -220,39 +339,12 @@ function getClaudeResponseTool() {
             properties: {
               type: {
                 type: "string",
-                enum: [
-                  "list_files",
-                  "wildcard_search",
-                  "search",
-                  "read_file",
-                  "edit_lines",
-                  "create_file",
-                  "delete_file",
-                  "move_file",
-                  "get_staged_changes",
-                  "unstage_file",
-                  "discard_all_staged",
-                  "project_inventory",
-                  "project_category",
-                  "project_elements",
-                ],
+                enum: allToolNames,
               },
               params: {
                 type: "object",
                 description: "Operation-specific parameters. Only include parameters relevant to the operation type.",
-                properties: {
-                  path_prefix: { type: ["string", "null"], description: "Filter files by path prefix (for list_files)" },
-                  query: { type: "string", description: "Multi-term search query (for wildcard_search)" },
-                  keyword: { type: "string", description: "Single keyword to search (for search)" },
-                  file_id: { type: "string", description: "UUID of file from list_files (for read_file, edit_lines, delete_file, move_file)" },
-                  path: { type: "string", description: "File path for session-created files or create_file" },
-                  start_line: { type: "integer", description: "Starting line number 1-based (for edit_lines)" },
-                  end_line: { type: "integer", description: "Ending line number inclusive (for edit_lines)" },
-                  new_content: { type: "string", description: "Replacement content (for edit_lines)" },
-                  content: { type: "string", description: "File content (for create_file)" },
-                  new_path: { type: "string", description: "New file path (for move_file)" },
-                  file_path: { type: "string", description: "File path to unstage (for unstage_file)" },
-                },
+                properties: paramsProperties,
               },
             },
             required: ["type", "params"],
@@ -281,6 +373,8 @@ function getClaudeResponseTool() {
     },
   };
 }
+
+// Old hardcoded getClaudeResponseTool removed - now using generateClaudeSchema() above
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -388,39 +482,29 @@ serve(async (req) => {
     
     console.log("Created session:", session.id);
 
-    // Load instruction manifest - mutable so we can merge custom descriptions
-    const manifest: {
-      file_operations: Record<string, { description: string }>;
-      project_exploration_tools?: Record<string, { description: string }>;
-    } = {
+    // Load instruction manifest - full structure with params for schema generation
+    const manifest: ToolsManifest = {
+      id: "coding-agent-tools",
+      name: "Coding Agent Tools Manifest",
+      version: "1.1.0",
+      description: "Unified tool definitions",
       file_operations: {
-        list_files: {
-          description:
-            "List all files with metadata (id, path, updated_at). MUST be called FIRST to load file structure. For session-created files, IDs are kept current.",
-        },
-        wildcard_search: {
-          description:
-            "Multi-term search across all files. Returns ranked results by match count. Use for finding files by concept.",
-        },
-        search: { description: "Search file paths and content by single keyword" },
-        read_file: {
-          description: "Read complete content of a single file. Returns content WITH LINE NUMBERS prefixed as <<N>>. Can use file_id OR path parameter. For newly created files, prefer using path.",
-        },
-        edit_lines: {
-          description:
-            "Edit specific line range in a file and stage the change. Use line numbers from <<N>> prefix in read_file output. Can use file_id OR path parameter. For newly created files, prefer using path.",
-        },
-        create_file: { description: "Create new file and stage as add operation" },
-        delete_file: { description: "Delete file and stage as delete operation" },
-        move_file: { description: "Move or rename file to a new path (handles directory moves properly)" },
-        get_staged_changes: { description: "View all currently staged changes. Essential for avoiding duplicate edits and understanding current state before making changes." },
-        unstage_file: { description: "Discard a specific staged change by file_path. Use when user requests reverting a file or when a change needs to be redone." },
-        discard_all_staged: { description: "Discard ALL staged changes. Use with EXTREME CAUTION - only when user explicitly requests full reset." },
+        list_files: { description: "List all files with metadata (id, path, updated_at). MUST be called FIRST to load file structure.", category: "discovery", enabled: true, params: { path_prefix: { type: "string | null", required: false, description: "Filter files by path prefix" } } },
+        wildcard_search: { description: "Multi-term search across all files. Returns ranked results by match count.", category: "discovery", enabled: true, params: { query: { type: "string", required: true, description: "Multi-term search query" } } },
+        search: { description: "Search file paths and content by single keyword.", category: "discovery", enabled: true, params: { keyword: { type: "string", required: true, description: "Single keyword to search" } } },
+        read_file: { description: "Read complete content of a single file. Returns content WITH LINE NUMBERS prefixed as <<N>>.", category: "read", enabled: true, params: { file_id: { type: "string", required: false, description: "UUID of file" }, path: { type: "string", required: false, description: "File path (alternative to file_id)" } } },
+        edit_lines: { description: "Edit specific line range in a file and stage the change.", category: "write", enabled: true, params: { file_id: { type: "string", required: false, description: "UUID of file" }, path: { type: "string", required: false, description: "File path" }, start_line: { type: "integer", required: true, description: "Starting line number (1-based)" }, end_line: { type: "integer", required: true, description: "Ending line number (inclusive)" }, new_content: { type: "string", required: true, description: "Replacement content" } } },
+        create_file: { description: "Create new file and stage as add operation.", category: "write", enabled: true, params: { path: { type: "string", required: true, description: "Full path for new file" }, content: { type: "string", required: true, description: "File content" } } },
+        delete_file: { description: "Delete file and stage as delete operation.", category: "write", enabled: true, params: { file_id: { type: "string", required: false, description: "UUID of file" }, path: { type: "string", required: false, description: "File path" } } },
+        move_file: { description: "Move or rename file to a new path.", category: "write", enabled: true, params: { file_id: { type: "string", required: false, description: "UUID of file" }, path: { type: "string", required: false, description: "Current file path" }, new_path: { type: "string", required: true, description: "New path" } } },
+        get_staged_changes: { description: "View all currently staged changes.", category: "staging", enabled: true, params: {} },
+        unstage_file: { description: "Discard a specific staged change by file_path.", category: "staging", enabled: true, params: { file_path: { type: "string", required: true, description: "File path to unstage" } } },
+        discard_all_staged: { description: "Discard ALL staged changes. Use with EXTREME CAUTION.", category: "staging", enabled: true, params: {} },
       },
       project_exploration_tools: {
-        project_inventory: { description: "Returns counts and brief previews for ALL project elements in one call. Use FIRST to understand project scope." },
-        project_category: { description: "Load ALL items from a specific category with full details. Categories: requirements, chat_sessions, standards, tech_stacks, artifacts, canvas_nodes, etc." },
-        project_elements: { description: "Load SPECIFIC elements by their IDs with full details. Pass array of {category, id} pairs." },
+        project_inventory: { description: "Returns counts and brief previews for ALL project elements in one call.", category: "project", enabled: true, params: {} },
+        project_category: { description: "Load ALL items from a specific category with full details.", category: "project", enabled: true, params: { category: { type: "string", required: true, description: "Category name" } } },
+        project_elements: { description: "Load SPECIFIC elements by their IDs with full details.", category: "project", enabled: true, params: { elements: { type: "array", required: true, description: "Array of {category, id} pairs" } } },
       },
     };
 
@@ -1045,7 +1129,7 @@ Start with { and end with }. No text before or after.`
             max_tokens: maxTokens,
             system: systemPrompt,
             messages,
-            tools: [getClaudeResponseTool()],
+            tools: [generateClaudeSchema(manifest, exposeProject)],
             tool_choice: { type: "tool", name: "respond_with_actions" },
           }),
         });
@@ -1072,7 +1156,7 @@ Start with { and end with }. No text before or after.`
             messages,
             max_tokens: maxTokens,
             temperature: 0.7,
-            response_format: getGrokResponseSchema(),
+            response_format: generateGrokSchema(manifest, exposeProject),
           }),
         });
       }
