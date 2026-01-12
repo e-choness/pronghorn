@@ -1227,11 +1227,11 @@ serve(async (req) => {
           });
         }
 
-        // Log assistant message
+        // Log agent message (must use 'agent' role - database constraint)
         await supabase.rpc("insert_agent_message_with_token", {
           p_session_id: sessionId,
           p_token: shareToken,
-          p_role: "assistant",
+          p_role: "agent",
           p_content: rawOutputText,
           p_metadata: { reasoning: agentResponse.reasoning, status: agentResponse.status, iteration },
         });
