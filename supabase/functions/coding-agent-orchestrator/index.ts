@@ -1229,7 +1229,7 @@ serve(async (req) => {
             entryType = 'progress';
           }
           
-          const blackboardResult = await supabase.rpc("insert_agent_blackboard_entry_with_token", {
+          const blackboardResult = await supabase.rpc("add_blackboard_entry_with_token", {
             p_session_id: sessionId,
             p_token: shareToken,
             p_entry_type: entryType,
