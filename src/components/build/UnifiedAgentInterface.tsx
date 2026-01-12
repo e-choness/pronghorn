@@ -381,10 +381,9 @@ export function UnifiedAgentInterface({
 
     const userMessageContent = taskInput;
     setIsSubmitting(true);
-    setTaskInput(''); // Clear input immediately
-    setIsAutoScrollEnabled(true); // Enable auto-scroll for new message
+    setTaskInput('');
+    setIsAutoScrollEnabled(true);
 
-    // Add optimistic user message to timeline immediately
     const optimisticUserMessage = {
       id: `temp-${Date.now()}`,
       session_id: "temp",
@@ -394,11 +393,9 @@ export function UnifiedAgentInterface({
       created_at: new Date().toISOString(),
     };
  
-    // Temporarily add to messages state for immediate display
     const previousMessages = messages;
     setMessages((prev: any[]) => [...prev, optimisticUserMessage]);
 
-    // Immediately scroll to the new message
     setTimeout(() => {
       if (messagesEndRef.current) {
         messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -406,13 +403,8 @@ export function UnifiedAgentInterface({
     }, 0);
 
     try {
-      // Retrieve chat history if enabled
       const chatHistory = await retrieveChatHistory();
-
-      // Create abort controller for this request
-      abortControllerRef.current = new AbortController();
       
-      // Reset streaming progress
       setStreamProgress({ 
         iteration: 0, 
         maxIterations: agentConfig.maxIterations, 
@@ -425,38 +417,51 @@ export function UnifiedAgentInterface({
         showStreamingContent: false
       });
 
-      // Use fetch for SSE streaming instead of supabase.functions.invoke
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      
-      // Get the user's JWT for authorization
       const { data: { session } } = await supabase.auth.getSession();
       const accessToken = session?.access_token || supabaseAnonKey;
-      
-      const response = await fetch(`${supabaseUrl}/functions/v1/coding-agent-orchestrator`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-          'apikey': supabaseAnonKey,
-        },
-        body: JSON.stringify({
+
+      // Frontend-driven iteration loop
+      let currentSessionId: string | null = null;
+      let currentIteration = 1;
+      let status = 'in_progress';
+
+      while (status === 'in_progress' && currentIteration <= agentConfig.maxIterations) {
+        abortControllerRef.current = new AbortController();
+
+        setStreamProgress(p => ({ 
+          ...p, 
+          iteration: currentIteration, 
+          maxIterations: agentConfig.maxIterations,
+          status: 'streaming',
+          charsReceived: 0,
+          streamingContent: ''
+        }));
+
+        const requestBody: any = {
           projectId,
           repoId,
           shareToken: shareToken || null,
-          taskDescription: userMessageContent,
-          chatHistory: chatHistory || undefined,
+          sessionId: currentSessionId,
+          iteration: currentIteration,
           mode: 'task',
           autoCommit,
-          attachedFiles: attachedFiles,
           exposeProject: agentConfig.exposeProject,
           maxIterations: agentConfig.maxIterations,
-          promptSections: hasCustomConfig ? promptSections : undefined,
-          customToolDescriptions: (customToolDescriptions.file_operations && Object.keys(customToolDescriptions.file_operations).length > 0) ||
+        };
+
+        // Only include full context on first iteration
+        if (currentIteration === 1) {
+          requestBody.taskDescription = userMessageContent;
+          requestBody.chatHistory = chatHistory || undefined;
+          requestBody.attachedFiles = attachedFiles;
+          requestBody.promptSections = hasCustomConfig ? promptSections : undefined;
+          requestBody.customToolDescriptions = (customToolDescriptions.file_operations && Object.keys(customToolDescriptions.file_operations).length > 0) ||
             (customToolDescriptions.project_exploration_tools && Object.keys(customToolDescriptions.project_exploration_tools).length > 0)
             ? customToolDescriptions
-            : undefined,
-          projectContext: attachedContext ? {
+            : undefined;
+          requestBody.projectContext = attachedContext ? {
             projectMetadata: attachedContext.projectMetadata || null,
             artifacts: attachedContext.artifacts.length > 0 ? attachedContext.artifacts : undefined,
             requirements: attachedContext.requirements.length > 0 ? attachedContext.requirements : undefined,
@@ -466,76 +471,85 @@ export function UnifiedAgentInterface({
             canvasEdges: attachedContext.canvasEdges.length > 0 ? attachedContext.canvasEdges : undefined,
             files: attachedContext.files?.length > 0 ? attachedContext.files : undefined,
             databases: attachedContext.databases?.length > 0 ? attachedContext.databases : undefined,
-          } : {},
-        }),
-        signal: abortControllerRef.current.signal,
-      });
+          } : {};
+        }
 
-      if (!response.ok) {
-        throw new Error(`Request failed: ${response.status}`);
-      }
+        const response = await fetch(`${supabaseUrl}/functions/v1/coding-agent-orchestrator`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'apikey': supabaseAnonKey,
+          },
+          body: JSON.stringify(requestBody),
+          signal: abortControllerRef.current.signal,
+        });
 
-      // Parse SSE stream
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
+        if (!response.ok) {
+          throw new Error(`Request failed: ${response.status}`);
+        }
 
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+        // Parse SSE stream for this iteration
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
+        if (reader) {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
-            try {
-              const data = JSON.parse(line.slice(6));
-              switch (data.type) {
-                case 'iteration_start':
-                  setStreamProgress(p => ({ 
-                    ...p, 
-                    iteration: data.iteration, 
-                    maxIterations: data.maxIterations, 
-                    charsReceived: 0, 
-                    streamingContent: '',
-                    status: 'streaming' 
-                  }));
-                  break;
-                case 'llm_streaming':
-                  setStreamProgress(p => ({ 
-                    ...p, 
-                    charsReceived: data.charsReceived,
-                    streamingContent: p.streamingContent + (data.delta || '')
-                  }));
-                  break;
-                case 'operation_start':
-                  setStreamProgress(p => ({ 
-                    ...p, 
-                    currentOperation: data.operation, 
-                    operationIndex: data.operationIndex || 0,
-                    totalOperations: data.totalOperations || 0,
-                    status: 'processing' 
-                  }));
-                  break;
-                case 'operation_complete':
-                  setStreamProgress(p => ({ ...p, currentOperation: null }));
-                  break;
-                case 'task_complete':
-                  setStreamProgress(p => ({ ...p, status: 'complete' }));
-                  break;
-                case 'error':
-                  throw new Error(data.error);
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              try {
+                const data = JSON.parse(line.slice(6));
+                switch (data.type) {
+                  case 'session_created':
+                    currentSessionId = data.sessionId;
+                    break;
+                  case 'llm_streaming':
+                    setStreamProgress(p => ({ 
+                      ...p, 
+                      charsReceived: data.charsReceived,
+                      streamingContent: p.streamingContent + (data.delta || '')
+                    }));
+                    break;
+                  case 'operation_start':
+                    setStreamProgress(p => ({ 
+                      ...p, 
+                      currentOperation: data.operation, 
+                      operationIndex: data.operationIndex || 0,
+                      totalOperations: data.totalOperations || 0,
+                      status: 'processing' 
+                    }));
+                    break;
+                  case 'operation_complete':
+                    setStreamProgress(p => ({ ...p, currentOperation: null }));
+                    break;
+                  case 'iteration_complete':
+                    status = data.status;
+                    currentSessionId = data.sessionId;
+                    break;
+                  case 'error':
+                    throw new Error(data.error);
+                }
+              } catch (e) {
+                if (e instanceof Error && e.message !== 'Unexpected end of JSON input') {
+                  throw e;
+                }
               }
-            } catch (e) {
-              // Ignore parse errors for partial chunks
             }
           }
         }
+
+        currentIteration++;
       }
 
+      setStreamProgress(p => ({ ...p, status: 'complete' }));
       toast.success('Agent task completed');
       refetchMessages();
       refetchOperations();
