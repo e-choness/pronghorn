@@ -69,15 +69,6 @@ export function useInfiniteAgentMessages(projectId: string | null, shareToken: s
     loadInitialMessages();
   }, [projectId, shareToken, loadInitialMessages]);
 
-  // Debounce ref to prevent rapid refetches
-  const refetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // Ref to hold latest loadInitialMessages without causing subscription recreation
-  const loadInitialMessagesRef = useRef(loadInitialMessages);
-  useEffect(() => {
-    loadInitialMessagesRef.current = loadInitialMessages;
-  }, [loadInitialMessages]);
-  
   // Ref for loading state to avoid stale closure in subscription callback
   const loadingRef = useRef(loading);
   useEffect(() => {
@@ -95,43 +86,68 @@ export function useInfiniteAgentMessages(projectId: string | null, shareToken: s
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "INSERT",
           schema: "public",
           table: "agent_messages",
         },
         (payload) => {
-          console.log("[AgentMessages] Postgres change received:", payload);
-          // Skip if already loading to prevent overlapping fetches
-          if (loadingRef.current) return;
-          // Debounce refetches to prevent flickering
-          if (refetchTimeoutRef.current) {
-            clearTimeout(refetchTimeoutRef.current);
-          }
-          refetchTimeoutRef.current = setTimeout(() => {
-            loadInitialMessagesRef.current();
-          }, 1000); // Increased debounce to reduce flickering
+          console.log("[AgentMessages] INSERT received:", payload);
+          const newMsg = payload.new as AgentMessage;
+          
+          // Filter out internal system messages
+          if (newMsg.role === 'system') return;
+          if (newMsg.metadata?.hidden) return;
+          if (newMsg.metadata?.type === 'operation_results') return;
+          
+          // Merge new message without refetching everything
+          setMessages(prev => {
+            // Check if message already exists
+            if (prev.some(m => m.id === newMsg.id)) return prev;
+            // Add and sort chronologically
+            return [...prev, newMsg].sort((a, b) => 
+              new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            );
+          });
         }
       )
-      // Broadcast listener for immediate updates from orchestrator
-      .on("broadcast", { event: "agent_message_refresh" }, (payload) => {
-        console.log("[AgentMessages] Broadcast received:", payload);
-        if (loadingRef.current) return;
-        if (refetchTimeoutRef.current) {
-          clearTimeout(refetchTimeoutRef.current);
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "agent_messages",
+        },
+        (payload) => {
+          console.log("[AgentMessages] UPDATE received:", payload);
+          const updatedMsg = payload.new as AgentMessage;
+          
+          // Update in place without refetching
+          setMessages(prev => 
+            prev.map(m => m.id === updatedMsg.id ? updatedMsg : m)
+          );
         }
-        refetchTimeoutRef.current = setTimeout(() => {
-          loadInitialMessagesRef.current();
-        }, 1000); // Increased debounce to reduce flickering
-      })
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "agent_messages",
+        },
+        (payload) => {
+          console.log("[AgentMessages] DELETE received:", payload);
+          const deletedId = (payload.old as any)?.id;
+          if (deletedId) {
+            setMessages(prev => prev.filter(m => m.id !== deletedId));
+          }
+        }
+      )
       .subscribe((status) => {
         console.log(`[AgentMessages] Subscription status: ${status}`);
       });
 
     return () => {
       console.log(`[AgentMessages] Cleaning up subscription for project ${projectId}`);
-      if (refetchTimeoutRef.current) {
-        clearTimeout(refetchTimeoutRef.current);
-      }
       supabase.removeChannel(channel);
     };
   }, [projectId]); // Only recreate subscription when projectId changes
