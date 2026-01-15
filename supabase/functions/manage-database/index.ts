@@ -180,6 +180,43 @@ function isEncrypted(value: string): boolean {
 
 // ============== End Encryption/Decryption Helpers ==============
 
+// ============== BigInt Serialization Helper ==============
+
+/**
+ * Recursively convert BigInt values to Numbers (or Strings for very large values).
+ * This is needed because JSON.stringify cannot serialize BigInt natively.
+ * PostgreSQL BIGINT/BIGSERIAL columns return JavaScript BigInt values.
+ */
+function serializeBigInts(obj: unknown): unknown {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+  
+  if (typeof obj === 'bigint') {
+    // Convert to Number if within safe integer range, otherwise String
+    if (obj >= Number.MIN_SAFE_INTEGER && obj <= Number.MAX_SAFE_INTEGER) {
+      return Number(obj);
+    }
+    return obj.toString();
+  }
+  
+  if (Array.isArray(obj)) {
+    return obj.map(serializeBigInts);
+  }
+  
+  if (typeof obj === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = serializeBigInts(value);
+    }
+    return result;
+  }
+  
+  return obj;
+}
+
+// ============== End BigInt Serialization Helper ==============
+
 interface ManageDatabaseRequest {
   action: 'get_schema' | 'execute_sql' | 'execute_sql_batch' | 'get_table_data' | 'get_table_columns' | 'export_table' 
     | 'get_table_definition' | 'get_view_definition' | 'get_function_definition' 
@@ -564,13 +601,13 @@ Deno.serve(async (req) => {
         // If batch failed, return 400 status so client knows it failed
         if (!batchResult.success) {
           console.error(`[manage-database] Batch execution failed at statement ${batchResult.failedIndex}: ${batchResult.error}`);
-          return new Response(JSON.stringify(batchResult), {
+          return new Response(JSON.stringify(serializeBigInts(batchResult)), {
             status: 400,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
         // Success - return with 200
-        return new Response(JSON.stringify(batchResult), {
+        return new Response(JSON.stringify(serializeBigInts(batchResult)), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       case 'test_connection':
@@ -580,7 +617,7 @@ Deno.serve(async (req) => {
         throw new Error(`Unknown action: ${action}`);
     }
 
-    return new Response(JSON.stringify({ success: true, data: result }), {
+    return new Response(JSON.stringify({ success: true, data: serializeBigInts(result) }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error: unknown) {
