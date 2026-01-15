@@ -15,7 +15,9 @@ import {
   Sparkles,
   Users,
   Copy,
-  Link2
+  Link2,
+  GripVertical,
+  Eye
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +46,8 @@ interface ArtifactTreeManagerProps {
   onShowRelated: (provenanceId: string) => void;
   onAddArtifact: (parentId: string | null) => void;
   onImageClick?: (url: string, title: string) => void;
+  onViewArtifact?: (artifact: Artifact) => void;
+  onDropArtifact?: (artifactId: string, targetFolderId: string | null) => void;
   summarizingId: string | null;
 }
 
@@ -61,6 +65,8 @@ interface ArtifactNodeProps {
   onShowRelated: (provenanceId: string) => void;
   onAddArtifact: (parentId: string | null) => void;
   onImageClick?: (url: string, title: string) => void;
+  onViewArtifact?: (artifact: Artifact) => void;
+  onDropArtifact?: (artifactId: string, targetFolderId: string | null) => void;
   summarizingId: string | null;
 }
 
@@ -78,11 +84,15 @@ function ArtifactNode({
   onShowRelated,
   onAddArtifact,
   onImageClick,
+  onViewArtifact,
+  onDropArtifact,
   summarizingId,
 }: ArtifactNodeProps) {
   const [isExpanded, setIsExpanded] = useState(level < 2);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(artifact.ai_title || "");
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const hasChildren = artifact.children && artifact.children.length > 0;
   const isFolder = artifact.is_folder;
@@ -109,16 +119,73 @@ function ArtifactNode({
     return getAllDescendantIds(artifact).length - 1; // Exclude self
   }, [artifact, isFolder]);
 
+  // Drag handlers
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData("artifactId", artifact.id);
+    e.dataTransfer.effectAllowed = "move";
+    setIsDragging(true);
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!isFolder) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    if (!isFolder) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    
+    const draggedId = e.dataTransfer.getData("artifactId");
+    if (draggedId && draggedId !== artifact.id && onDropArtifact) {
+      // Prevent dropping into own descendants
+      const descendantIds = getAllDescendantIds(artifact);
+      if (!descendantIds.includes(draggedId)) {
+        onDropArtifact(draggedId, artifact.id);
+      }
+    }
+  };
+
+  const handleRowClick = () => {
+    if (isFolder) {
+      setIsExpanded(!isExpanded);
+    } else if (onViewArtifact) {
+      onViewArtifact(artifact);
+    }
+  };
+
   return (
-    <div>
+    <div className={cn(isDragging && "opacity-50")}>
       <div 
         className={cn(
-          "group flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-muted/50 transition-colors",
-          isFolder && "cursor-pointer"
+          "group flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-muted/50 transition-colors cursor-pointer",
+          isDragOver && isFolder && "bg-primary/20 ring-2 ring-primary"
         )}
         style={{ paddingLeft: `${level * 20 + 8}px` }}
-        onClick={() => isFolder && setIsExpanded(!isExpanded)}
+        onClick={handleRowClick}
+        draggable
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
       >
+        {/* Drag handle */}
+        <GripVertical className="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0 cursor-grab active:cursor-grabbing" />
+
         {/* Expand/collapse button */}
         <div className="w-5 flex-shrink-0">
           {hasChildren ? (
@@ -205,6 +272,21 @@ function ArtifactNode({
           {format(new Date(artifact.created_at), "MMM d")}
         </span>
 
+        {/* Quick view button for non-folders */}
+        {!isFolder && onViewArtifact && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewArtifact(artifact);
+            }}
+          >
+            <Eye className="h-3.5 w-3.5" />
+          </Button>
+        )}
+
         {/* Actions menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -250,6 +332,10 @@ function ArtifactNode({
               </>
             ) : (
               <>
+                <DropdownMenuItem onClick={() => onViewArtifact?.(artifact)}>
+                  <Eye className="h-4 w-4 mr-2" />
+                  View
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => onEdit(artifact)}>
                   <Edit2 className="h-4 w-4 mr-2" />
                   Edit
@@ -310,6 +396,8 @@ function ArtifactNode({
               onShowRelated={onShowRelated}
               onAddArtifact={onAddArtifact}
               onImageClick={onImageClick}
+              onViewArtifact={onViewArtifact}
+              onDropArtifact={onDropArtifact}
               summarizingId={summarizingId}
             />
           ))}
@@ -332,18 +420,56 @@ export function ArtifactTreeManager({
   onShowRelated,
   onAddArtifact,
   onImageClick,
+  onViewArtifact,
+  onDropArtifact,
   summarizingId,
 }: ArtifactTreeManagerProps) {
+  const [isDragOverRoot, setIsDragOverRoot] = useState(false);
+
+  const handleRootDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOverRoot(true);
+  };
+
+  const handleRootDragLeave = () => {
+    setIsDragOverRoot(false);
+  };
+
+  const handleRootDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOverRoot(false);
+    const artifactId = e.dataTransfer.getData("artifactId");
+    if (artifactId && onDropArtifact) {
+      onDropArtifact(artifactId, null);
+    }
+  };
+
   if (artifacts.length === 0) {
     return (
-      <div className="text-center py-8 text-muted-foreground">
+      <div 
+        className={cn(
+          "text-center py-8 text-muted-foreground border rounded-md",
+          isDragOverRoot && "bg-primary/10 ring-2 ring-primary"
+        )}
+        onDragOver={handleRootDragOver}
+        onDragLeave={handleRootDragLeave}
+        onDrop={handleRootDrop}
+      >
         No artifacts yet. Create a folder or add an artifact to get started.
       </div>
     );
   }
 
   return (
-    <div className="space-y-0.5 border rounded-md p-2 bg-card">
+    <div 
+      className={cn(
+        "space-y-0.5 border rounded-md p-2 bg-card",
+        isDragOverRoot && "ring-2 ring-primary"
+      )}
+      onDragOver={handleRootDragOver}
+      onDragLeave={handleRootDragLeave}
+      onDrop={handleRootDrop}
+    >
       {artifacts.map((artifact) => (
         <ArtifactNode
           key={artifact.id}
@@ -360,6 +486,8 @@ export function ArtifactTreeManager({
           onShowRelated={onShowRelated}
           onAddArtifact={onAddArtifact}
           onImageClick={onImageClick}
+          onViewArtifact={onViewArtifact}
+          onDropArtifact={onDropArtifact}
           summarizingId={summarizingId}
         />
       ))}

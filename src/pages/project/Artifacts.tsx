@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { PrimaryNav } from "@/components/layout/PrimaryNav";
 import { ProjectSidebar } from "@/components/layout/ProjectSidebar";
 import { ProjectPageHeader } from "@/components/layout/ProjectPageHeader";
@@ -9,12 +9,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useShareToken } from "@/hooks/useShareToken";
 import { TokenRecoveryMessage } from "@/components/project/TokenRecoveryMessage";
-import { useRealtimeArtifacts } from "@/hooks/useRealtimeArtifacts";
+import { useRealtimeArtifacts, buildArtifactHierarchy } from "@/hooks/useRealtimeArtifacts";
 import { useAuth } from "@/contexts/AuthContext";
-import { Plus, Search, Trash2, Edit2, Sparkles, LayoutGrid, List, ArrowUpDown, Users, Download, Grid3X3, Link2, X, ScanEye, Wand2, Copy, FolderPlus, TreePine } from "lucide-react";
+import { Plus, Search, Trash2, Edit2, Sparkles, LayoutGrid, List, ArrowUpDown, Users, Download, Grid3X3, Link2, X, ScanEye, Wand2, Copy, FolderPlus, TreePine, Folder, ChevronRight, PanelLeftClose, PanelLeft, Eye } from "lucide-react";
 import { CreateFolderDialog } from "@/components/artifacts/CreateFolderDialog";
 import { MoveArtifactDialog } from "@/components/artifacts/MoveArtifactDialog";
 import { ArtifactTreeManager } from "@/components/artifacts/ArtifactTreeManager";
+import { ArtifactFolderSidebar } from "@/components/artifacts/ArtifactFolderSidebar";
 import { Artifact } from "@/hooks/useRealtimeArtifacts";
 import { VisualRecognitionDialog } from "@/components/artifacts/VisualRecognitionDialog";
 import { EnhanceImageDialog } from "@/components/artifacts/EnhanceImageDialog";
@@ -66,6 +67,8 @@ import {
 } from "@/components/ui/tooltip";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 
 export default function Artifacts() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -97,6 +100,9 @@ export default function Artifacts() {
   const [deletingArtifact, setDeletingArtifact] = useState<{ id: string; title: string } | null>(null);
   const [isVisualRecognitionOpen, setIsVisualRecognitionOpen] = useState(false);
   const [isEnhanceImageOpen, setIsEnhanceImageOpen] = useState(false);
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [showFolderSidebar, setShowFolderSidebar] = useState(true);
+  const [viewingArtifact, setViewingArtifact] = useState<Artifact | null>(null);
 
   // Fetch project settings for model configuration
   const { data: project } = useQuery({
@@ -112,27 +118,66 @@ export default function Artifacts() {
     enabled: !!projectId && isTokenSet,
   });
 
-  const filteredAndSortedArtifacts = artifacts
-    .filter((artifact) => {
-      // Apply provenance filter if set
-      if (provenanceFilter && artifact.provenance_id !== provenanceFilter) {
-        return false;
-      }
-      // Apply search filter
-      return (
-        artifact.content?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        artifact.ai_title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        artifact.ai_summary?.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    })
-    .sort((a, b) => {
-      const dateA = new Date(a.created_at).getTime();
-      const dateB = new Date(b.created_at).getTime();
-      return sortOrder === "newest" ? dateB - dateA : dateA - dateB;
-    });
+  // Filter artifacts based on selected folder and search
+  const filteredAndSortedArtifacts = useMemo(() => {
+    return artifacts
+      .filter((artifact) => {
+        // Filter out folders from non-tree views
+        if (artifact.is_folder) return false;
+        
+        // Filter by selected folder
+        if (selectedFolderId !== null) {
+          if (artifact.parent_id !== selectedFolderId) return false;
+        }
+        
+        // Apply provenance filter if set
+        if (provenanceFilter && artifact.provenance_id !== provenanceFilter) {
+          return false;
+        }
+        
+        // Apply search filter
+        return (
+          artifact.content?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          artifact.ai_title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          artifact.ai_summary?.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+      })
+      .sort((a, b) => {
+        const dateA = new Date(a.created_at).getTime();
+        const dateB = new Date(b.created_at).getTime();
+        return sortOrder === "newest" ? dateB - dateA : dateA - dateB;
+      });
+  }, [artifacts, selectedFolderId, provenanceFilter, searchQuery, sortOrder]);
+
+  // Get the current folder for breadcrumb
+  const currentFolder = useMemo(() => {
+    if (!selectedFolderId) return null;
+    return artifacts.find(a => a.id === selectedFolderId);
+  }, [artifacts, selectedFolderId]);
+
+  // Get folder path for breadcrumb
+  const folderPath = useMemo(() => {
+    if (!selectedFolderId) return [];
+    const path: Artifact[] = [];
+    let current = artifacts.find(a => a.id === selectedFolderId);
+    while (current) {
+      path.unshift(current);
+      current = current.parent_id ? artifacts.find(a => a.id === current!.parent_id) : undefined;
+    }
+    return path;
+  }, [artifacts, selectedFolderId]);
 
   // Filter for image artifacts only (for gallery view)
   const imageArtifacts = filteredAndSortedArtifacts.filter(a => !!a.image_url);
+
+  // Handle drag and drop
+  const handleDropArtifact = async (artifactId: string, targetFolderId: string | null) => {
+    try {
+      await moveArtifact(artifactId, targetFolderId);
+    } catch (error) {
+      // Error already handled in hook
+    }
+  };
 
   const handleArtifactsCreated = () => {
     refresh();
@@ -352,8 +397,9 @@ ${artifact.content}`;
               subtitle="Manage reusable knowledge blocks and documentation"
               onMenuClick={() => setIsSidebarOpen(true)}
             />
-            <div className="space-y-6">
-              <div className="flex flex-col md:flex-row gap-3 mb-6">
+            <div className="space-y-4">
+              {/* Search and controls */}
+              <div className="flex flex-col md:flex-row gap-3">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -499,41 +545,105 @@ ${artifact.content}`;
                 </div>
               </div>
 
-              {isLoading ? (
-                <div className="text-center py-8 text-muted-foreground">Loading artifacts...</div>
-              ) : viewMode === "tree" ? (
-                <ArtifactTreeManager
-                  artifacts={artifactTree}
-                  onEdit={handleEditClick}
-                  onDelete={(artifact) => setDeletingArtifact({ id: artifact.id, title: artifact.ai_title || "Untitled" })}
-                  onMove={setMovingArtifact}
-                  onCreateFolder={(parentId) => { setCreateFolderParentId(parentId); setIsCreateFolderOpen(true); }}
-                  onRenameFolder={(folder, newName) => renameFolder(folder.id, newName)}
-                  onSummarize={handleSummarize}
-                  onCollaborate={setCollaboratingArtifact}
-                  onClone={handleCloneArtifact}
-                  onShowRelated={handleShowRelated}
-                  onAddArtifact={(parentId) => { setAddArtifactParentId(parentId); setIsAddDialogOpen(true); }}
-                  onImageClick={(url, title) => setPreviewImage({ url, title })}
-                  summarizingId={summarizingId}
-                />
-              ) : filteredAndSortedArtifacts.length === 0 ? (
-                <Card>
-                  <CardContent className="text-center py-12">
-                    <p className="text-muted-foreground">
-                      {searchQuery ? "No artifacts match your search" : provenanceFilter ? "No related artifacts found" : "No artifacts yet"}
-                    </p>
-                  </CardContent>
-                </Card>
-              ) : viewMode === "gallery" ? (
-                // Gallery View - Masonry layout for image artifacts
-                imageArtifacts.length === 0 ? (
-                  <Card>
-                    <CardContent className="text-center py-12">
-                      <p className="text-muted-foreground">No image artifacts to display in gallery</p>
-                    </CardContent>
-                  </Card>
-                ) : (
+              {/* Breadcrumb when in a folder */}
+              {selectedFolderId && (
+                <div className="flex items-center gap-1 text-sm">
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => setSelectedFolderId(null)}
+                  >
+                    All Artifacts
+                  </Button>
+                  {folderPath.map((folder, index) => (
+                    <div key={folder.id} className="flex items-center gap-1">
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className={cn(
+                          "h-auto p-0",
+                          index === folderPath.length - 1 
+                            ? "text-foreground font-medium" 
+                            : "text-muted-foreground hover:text-foreground"
+                        )}
+                        onClick={() => setSelectedFolderId(folder.id)}
+                      >
+                        {folder.ai_title || "Untitled Folder"}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Main content with folder sidebar */}
+              <div className="flex gap-4">
+                {/* Folder sidebar - hidden on mobile and in tree view */}
+                {showFolderSidebar && viewMode !== "tree" && (
+                  <div className="hidden md:block">
+                    <ArtifactFolderSidebar
+                      artifacts={artifacts}
+                      selectedFolderId={selectedFolderId}
+                      onSelectFolder={setSelectedFolderId}
+                      onCreateFolder={(parentId) => { setCreateFolderParentId(parentId); setIsCreateFolderOpen(true); }}
+                      onDropArtifact={handleDropArtifact}
+                    />
+                  </div>
+                )}
+
+                {/* Toggle sidebar button */}
+                {viewMode !== "tree" && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="hidden md:flex absolute left-4 top-1/2 z-10 h-8 w-8"
+                    onClick={() => setShowFolderSidebar(!showFolderSidebar)}
+                    title={showFolderSidebar ? "Hide folders" : "Show folders"}
+                  >
+                    {showFolderSidebar ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
+                  </Button>
+                )}
+
+                {/* Content area */}
+                <div className="flex-1 min-w-0">
+                  {isLoading ? (
+                    <div className="text-center py-8 text-muted-foreground">Loading artifacts...</div>
+                  ) : viewMode === "tree" ? (
+                    <ArtifactTreeManager
+                      artifacts={artifactTree}
+                      onEdit={handleEditClick}
+                      onDelete={(artifact) => setDeletingArtifact({ id: artifact.id, title: artifact.ai_title || "Untitled" })}
+                      onMove={setMovingArtifact}
+                      onCreateFolder={(parentId) => { setCreateFolderParentId(parentId); setIsCreateFolderOpen(true); }}
+                      onRenameFolder={(folder, newName) => renameFolder(folder.id, newName)}
+                      onSummarize={handleSummarize}
+                      onCollaborate={setCollaboratingArtifact}
+                      onClone={handleCloneArtifact}
+                      onShowRelated={handleShowRelated}
+                      onAddArtifact={(parentId) => { setAddArtifactParentId(parentId); setIsAddDialogOpen(true); }}
+                      onImageClick={(url, title) => setPreviewImage({ url, title })}
+                      onViewArtifact={setViewingArtifact}
+                      onDropArtifact={handleDropArtifact}
+                      summarizingId={summarizingId}
+                    />
+                  ) : filteredAndSortedArtifacts.length === 0 ? (
+                    <Card>
+                      <CardContent className="text-center py-12">
+                        <p className="text-muted-foreground">
+                          {searchQuery ? "No artifacts match your search" : selectedFolderId ? "This folder is empty" : provenanceFilter ? "No related artifacts found" : "No artifacts yet"}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ) : viewMode === "gallery" ? (
+                    // Gallery View - Masonry layout for image artifacts
+                    imageArtifacts.length === 0 ? (
+                      <Card>
+                        <CardContent className="text-center py-12">
+                          <p className="text-muted-foreground">No image artifacts to display in gallery</p>
+                        </CardContent>
+                      </Card>
+                    ) : (
                   <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4">
                     {imageArtifacts.map((artifact) => (
                       <div 
@@ -942,6 +1052,8 @@ ${artifact.content}`;
                   </Table>
                 </Card>
               )}
+                </div>
+              </div>
             </div>
           </div>
         </main>
@@ -987,6 +1099,45 @@ ${artifact.content}`;
                 Cancel
               </Button>
               <Button onClick={handleUpdateArtifact}>Save Changes</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Artifact View Modal */}
+      {viewingArtifact && (
+        <Dialog open={!!viewingArtifact} onOpenChange={() => setViewingArtifact(null)}>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Eye className="h-5 w-5" />
+                {viewingArtifact.ai_title || "Untitled Artifact"}
+              </DialogTitle>
+              {viewingArtifact.ai_summary && (
+                <DialogDescription>{viewingArtifact.ai_summary}</DialogDescription>
+              )}
+            </DialogHeader>
+            <ScrollArea className="flex-1 max-h-[60vh]">
+              {viewingArtifact.image_url && (
+                <img 
+                  src={viewingArtifact.image_url} 
+                  alt={viewingArtifact.ai_title || ""}
+                  className="max-w-full h-auto rounded-md mb-4"
+                />
+              )}
+              <pre className="whitespace-pre-wrap text-sm bg-muted p-4 rounded-md">
+                {viewingArtifact.content}
+              </pre>
+            </ScrollArea>
+            <div className="flex gap-2 justify-end pt-4 border-t">
+              <Button variant="outline" onClick={() => { setEditingArtifact(viewingArtifact); setEditingTitle(viewingArtifact.ai_title || ""); setViewingArtifact(null); }}>
+                <Edit2 className="h-4 w-4 mr-2" />
+                Edit
+              </Button>
+              <Button variant="outline" onClick={() => { setCollaboratingArtifact(viewingArtifact); setViewingArtifact(null); }}>
+                <Users className="h-4 w-4 mr-2" />
+                Collaborate
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
