@@ -552,11 +552,11 @@ ${artifact.content}`;
                   size="sm"
                   className={cn(
                     "h-auto p-0",
-                    selectedFolderId === null 
+                    selectedFolderId === null && !viewingArtifact
                       ? "text-foreground font-medium" 
                       : "text-muted-foreground hover:text-foreground"
                   )}
-                  onClick={() => setSelectedFolderId(null)}
+                  onClick={() => { setSelectedFolderId(null); setViewingArtifact(null); }}
                 >
                   All Artifacts
                 </Button>
@@ -568,16 +568,24 @@ ${artifact.content}`;
                       size="sm"
                       className={cn(
                         "h-auto p-0",
-                        index === folderPath.length - 1 
+                        index === folderPath.length - 1 && !viewingArtifact
                           ? "text-foreground font-medium" 
                           : "text-muted-foreground hover:text-foreground"
                       )}
-                      onClick={() => setSelectedFolderId(folder.id)}
+                      onClick={() => { setSelectedFolderId(folder.id); setViewingArtifact(null); }}
                     >
                       {folder.ai_title || "Untitled Folder"}
                     </Button>
                   </div>
                 ))}
+                {viewingArtifact && (
+                  <div className="flex items-center gap-1">
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-foreground font-medium">
+                      {viewingArtifact.ai_title || "Untitled Artifact"}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Main content with folder sidebar */}
@@ -615,6 +623,51 @@ ${artifact.content}`;
                 <div className="flex-1 min-w-0">
                   {isLoading ? (
                     <div className="text-center py-8 text-muted-foreground">Loading artifacts...</div>
+                  ) : viewingArtifact ? (
+                    /* Inline artifact view */
+                    <Card>
+                      <CardHeader>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-1 flex-1 min-w-0">
+                            <CardTitle className="text-xl flex items-center gap-2">
+                              <Eye className="h-5 w-5" />
+                              {viewingArtifact.ai_title || "Untitled Artifact"}
+                            </CardTitle>
+                            {viewingArtifact.ai_summary && (
+                              <CardDescription>{viewingArtifact.ai_summary}</CardDescription>
+                            )}
+                            <p className="text-xs text-muted-foreground">
+                              Created {format(new Date(viewingArtifact.created_at), "PPp")}
+                            </p>
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <Button variant="outline" size="sm" onClick={() => { handleEditClick(viewingArtifact); setViewingArtifact(null); }}>
+                              <Edit2 className="h-4 w-4 mr-2" />
+                              Edit
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => { setCollaboratingArtifact(viewingArtifact); setViewingArtifact(null); }}>
+                              <Users className="h-4 w-4 mr-2" />
+                              Collaborate
+                            </Button>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        {viewingArtifact.image_url && (
+                          <img 
+                            src={viewingArtifact.image_url} 
+                            alt={viewingArtifact.ai_title || ""}
+                            className="max-w-full h-auto rounded-md mb-4 cursor-pointer hover:opacity-90"
+                            onClick={() => setPreviewImage({ url: viewingArtifact.image_url!, title: viewingArtifact.ai_title || "" })}
+                          />
+                        )}
+                        <ScrollArea className="max-h-[60vh]">
+                          <pre className="whitespace-pre-wrap text-sm bg-muted p-4 rounded-md">
+                            {viewingArtifact.content}
+                          </pre>
+                        </ScrollArea>
+                      </CardContent>
+                    </Card>
                   ) : viewMode === "tree" ? (
                     <ArtifactTreeManager
                       artifacts={artifactTree}
@@ -1110,44 +1163,7 @@ ${artifact.content}`;
         </Dialog>
       )}
 
-      {/* Artifact View Modal */}
-      {viewingArtifact && (
-        <Dialog open={!!viewingArtifact} onOpenChange={() => setViewingArtifact(null)}>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Eye className="h-5 w-5" />
-                {viewingArtifact.ai_title || "Untitled Artifact"}
-              </DialogTitle>
-              {viewingArtifact.ai_summary && (
-                <DialogDescription>{viewingArtifact.ai_summary}</DialogDescription>
-              )}
-            </DialogHeader>
-            <ScrollArea className="flex-1 max-h-[60vh]">
-              {viewingArtifact.image_url && (
-                <img 
-                  src={viewingArtifact.image_url} 
-                  alt={viewingArtifact.ai_title || ""}
-                  className="max-w-full h-auto rounded-md mb-4"
-                />
-              )}
-              <pre className="whitespace-pre-wrap text-sm bg-muted p-4 rounded-md">
-                {viewingArtifact.content}
-              </pre>
-            </ScrollArea>
-            <div className="flex gap-2 justify-end pt-4 border-t">
-              <Button variant="outline" onClick={() => { setEditingArtifact(viewingArtifact); setEditingTitle(viewingArtifact.ai_title || ""); setViewingArtifact(null); }}>
-                <Edit2 className="h-4 w-4 mr-2" />
-                Edit
-              </Button>
-              <Button variant="outline" onClick={() => { setCollaboratingArtifact(viewingArtifact); setViewingArtifact(null); }}>
-                <Users className="h-4 w-4 mr-2" />
-                Collaborate
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
+      {/* Artifact View Modal - removed, now inline */}
 
       {/* Image Preview Modal */}
       {previewImage && (
