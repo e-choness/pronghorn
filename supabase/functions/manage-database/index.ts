@@ -787,7 +787,7 @@ async function executeSqlBatch(
   try {
     if (wrapInTransaction) {
       console.log("[manage-database] Starting transaction for batch execution");
-      await client.queryArray("BEGIN");
+      await client.queryObject("BEGIN");
     }
     
     for (let i = 0; i < statements.length; i++) {
@@ -796,13 +796,13 @@ async function executeSqlBatch(
       
       try {
         console.log(`[manage-database] Executing statement ${i + 1}/${statements.length}: ${stmt.description}`);
-        const result = await client.queryArray(stmt.sql);
+        const result = await client.queryObject(stmt.sql);
         results.push({
           index: i,
           success: true,
           description: stmt.description,
           sql: stmt.sql,
-          rowCount: result.rowCount ?? result.rows.length,
+          rowCount: result.rows.length,
           executionTime: Date.now() - startTime
         });
       } catch (stmtError: unknown) {
@@ -828,10 +828,10 @@ async function executeSqlBatch(
     if (wrapInTransaction) {
       if (hasError) {
         console.log("[manage-database] Rolling back transaction due to error");
-        await client.queryArray("ROLLBACK");
+        await client.queryObject("ROLLBACK");
       } else {
         console.log("[manage-database] Committing transaction");
-        await client.queryArray("COMMIT");
+        await client.queryObject("COMMIT");
       }
     }
     
@@ -854,7 +854,7 @@ async function executeSqlBatch(
     
     if (wrapInTransaction) {
       try {
-        await client.queryArray("ROLLBACK");
+        await client.queryObject("ROLLBACK");
       } catch { /* ignore rollback errors */ }
     }
     
