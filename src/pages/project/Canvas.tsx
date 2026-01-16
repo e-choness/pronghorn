@@ -31,7 +31,8 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { Button } from "@/components/ui/button";
-import { ZoomIn, ZoomOut, Maximize, Camera, Lasso as LassoIcon, Image, ChevronRight, Wrench, Sparkles, FileSearch, AlignLeft, AlignVerticalJustifyStart, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Grid3x3, ImagePlus, Eye } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize, Camera, Lasso as LassoIcon, Image, ChevronRight, Wrench, Sparkles, FileSearch, AlignLeft, AlignVerticalJustifyStart, AlignHorizontalDistributeCenter, AlignVerticalDistributeCenter, Grid3x3, ImagePlus, Eye, Trash2 } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { AIArchitectDialog } from "@/components/canvas/AIArchitectDialog";
 import { InfographicDialog } from "@/components/canvas/InfographicDialog";
 import { useToast } from "@/hooks/use-toast";
@@ -180,6 +181,7 @@ function CanvasFlow() {
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
   const [isAIArchitectOpen, setIsAIArchitectOpen] = useState(false);
   const [isInfographicOpen, setIsInfographicOpen] = useState(false);
+  const [isClearCanvasOpen, setIsClearCanvasOpen] = useState(false);
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -1310,6 +1312,49 @@ function CanvasFlow() {
     });
   }, [selectedNodesList, visibleNodes, setNodes, saveNode, toast]);
 
+  const handleClearCanvas = useCallback(async () => {
+    const nodeCount = nodes.length;
+    const edgeCount = edges.length;
+    const layerCount = layers.length;
+    
+    if (nodeCount === 0 && edgeCount === 0 && layerCount === 0) {
+      toast({
+        title: "Canvas is empty",
+        description: "Nothing to clear",
+      });
+      return;
+    }
+    
+    const { supabase } = await import("@/integrations/supabase/client");
+    
+    // Delete all nodes from database
+    for (const node of nodes) {
+      await supabase.rpc("delete_canvas_node_with_token", {
+        p_id: node.id,
+        p_token: token,
+      });
+    }
+    
+    // Delete all layers
+    for (const layer of layers) {
+      await deleteLayer(layer.id);
+    }
+    
+    // Clear local state
+    setNodes([]);
+    setEdges([]);
+    setSelectedNode(null);
+    setSelectedEdge(null);
+    setIsPanelOpen(false);
+    
+    toast({
+      title: "Canvas cleared",
+      description: `Removed ${nodeCount} nodes, ${edgeCount} edges, and ${layerCount} layers`,
+    });
+    
+    setIsClearCanvasOpen(false);
+  }, [nodes, edges, layers, token, deleteLayer, setNodes, setEdges, toast]);
+
   // Show token recovery message if token is missing
   if (tokenMissing) {
     return (
@@ -1430,6 +1475,13 @@ function CanvasFlow() {
                         <DropdownMenuItem onClick={handleAutoOrder}>
                           <Grid3x3 className="h-4 w-4 mr-2" />
                           Auto Order
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={() => setIsClearCanvasOpen(true)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Clear Canvas
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -1605,11 +1657,47 @@ function CanvasFlow() {
                           <p>Auto Order</p>
                         </TooltipContent>
                       </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            onClick={() => setIsClearCanvasOpen(true)}
+                            size="sm"
+                            variant="outline"
+                            className="bg-card/80 text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p>Clear Canvas</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </>
                   )}
                 </div>
               )}
             </TooltipProvider>
+
+            {/* Clear Canvas Confirmation Dialog */}
+            <AlertDialog open={isClearCanvasOpen} onOpenChange={setIsClearCanvasOpen}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Clear Canvas?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete all {nodes.length} nodes, {edges.length} edges, and {layers.length} layers from the canvas. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction 
+                    onClick={handleClearCanvas}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Clear Canvas
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
 
             {/* Main project canvas is fully unmounted while AI Architect is open to avoid flicker */}
             {!isAIArchitectOpen && (
