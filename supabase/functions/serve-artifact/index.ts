@@ -99,28 +99,31 @@ Deno.serve(async (req) => {
 
     console.log(`[serve-artifact] Fetching artifact ${artifactId} in mode: ${mode}`);
 
-    // Call the get_published_artifact RPC
-    const { data: artifact, error } = await supabase.rpc('get_published_artifact', {
-      p_artifact_id: artifactId
+  // Call the get_published_artifact RPC
+  const { data, error } = await supabase.rpc('get_published_artifact', {
+    p_artifact_id: artifactId
+  });
+
+  if (error) {
+    console.error(`[serve-artifact] RPC error:`, error);
+    return new Response('Error fetching artifact', { 
+      status: 500, 
+      headers: { ...corsHeaders, 'Content-Type': 'text/plain' } 
     });
+  }
 
-    if (error) {
-      console.error(`[serve-artifact] RPC error:`, error);
-      return new Response('Error fetching artifact', { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'text/plain' } 
-      });
-    }
+  // RPC returns a TABLE, so data is an array - get first row
+  const artifact = Array.isArray(data) ? data[0] : data;
 
-    if (!artifact) {
-      console.log(`[serve-artifact] Artifact not found or not published: ${artifactId}`);
-      return new Response('Artifact not found or not published', { 
-        status: 404, 
-        headers: { ...corsHeaders, 'Content-Type': 'text/plain' } 
-      });
-    }
+  if (!artifact) {
+    console.log(`[serve-artifact] Artifact not found or not published: ${artifactId}`);
+    return new Response('Artifact not found or not published', { 
+      status: 404, 
+      headers: { ...corsHeaders, 'Content-Type': 'text/plain' } 
+    });
+  }
 
-    console.log(`[serve-artifact] Found artifact: ${artifact.ai_title || 'Untitled'}, source_type: ${artifact.source_type}`);
+  console.log(`[serve-artifact] Found artifact: ${artifact.ai_title || 'Untitled'}, source_type: ${artifact.source_type}, content length: ${(artifact.content || '').length}`);
 
     // Handle binary mode - redirect to image URL
     if (mode === 'binary') {
