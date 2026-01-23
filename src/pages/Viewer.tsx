@@ -208,9 +208,9 @@ export default function Viewer() {
 
   // Full viewer mode
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+      <header className="border-b bg-card/50 backdrop-blur-sm shrink-0">
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 min-w-0">
@@ -241,7 +241,7 @@ export default function Viewer() {
       </header>
 
       {/* Content */}
-      <main className="flex-1 container mx-auto px-4 py-6">
+      <main className="flex-1 flex flex-col min-h-0 container mx-auto px-4 py-4">
         {isLoading ? (
           <Card>
             <CardContent className="p-6">
@@ -262,11 +262,11 @@ export default function Viewer() {
             </CardContent>
           </Card>
         ) : artifact ? (
-          <div className="space-y-4">
+          <div className="flex-1 flex flex-col min-h-0 gap-3">
             {/* View mode tabs */}
-            <Card>
-              <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as typeof viewMode)}>
-                <div className="border-b px-4 py-2">
+            <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as typeof viewMode)} className="flex-1 flex flex-col min-h-0">
+                <div className="border-b px-4 py-2 shrink-0">
                   <TabsList className="h-8">
                     <TabsTrigger value="preview" className="text-xs h-7 px-3">
                       <FileText className="h-3 w-3 mr-1.5" />
@@ -285,9 +285,9 @@ export default function Viewer() {
                   </TabsList>
                 </div>
 
-                <CardContent className="p-0">
-                  <TabsContent value="preview" className="m-0">
-                    <ScrollArea className="h-[calc(100vh-280px)]">
+                <CardContent className="p-0 flex-1 flex flex-col min-h-0">
+                  <TabsContent value="preview" className="m-0 flex-1 min-h-0">
+                    <ScrollArea className="h-full">
                       <div className="p-6">
                         {artifact.ai_summary && (
                           <div className="mb-6 p-4 bg-muted/50 rounded-lg border">
@@ -313,35 +313,31 @@ export default function Viewer() {
                     </ScrollArea>
                   </TabsContent>
 
-                  <TabsContent value="source" className="m-0">
-                    <div className="h-[calc(100vh-280px)]">
-                      <Editor
-                        height="100%"
-                        language="markdown"
-                        value={artifact.content}
-                        theme="vs-dark"
-                        options={{
-                          readOnly: true,
-                          minimap: { enabled: false },
-                          lineNumbers: "on",
-                          wordWrap: "on",
-                          scrollBeyondLastLine: false,
-                          fontSize: 13,
-                        }}
-                      />
-                    </div>
+                  <TabsContent value="source" className="m-0 flex-1 min-h-0">
+                    <Editor
+                      height="100%"
+                      language="markdown"
+                      value={artifact.content}
+                      theme="vs-dark"
+                      options={{
+                        readOnly: true,
+                        minimap: { enabled: false },
+                        lineNumbers: "on",
+                        wordWrap: "on",
+                        scrollBeyondLastLine: false,
+                        fontSize: 13,
+                      }}
+                    />
                   </TabsContent>
 
                   {isHtmlContent && (
-                    <TabsContent value="html" className="m-0">
-                      <div className="h-[calc(100vh-280px)] bg-white">
-                        <iframe
-                          srcDoc={artifact.content}
-                          title="HTML Preview"
-                          className="w-full h-full border-0"
-                          sandbox="allow-scripts allow-same-origin"
-                        />
-                      </div>
+                    <TabsContent value="html" className="m-0 flex-1 min-h-0">
+                      <iframe
+                        srcDoc={artifact.content}
+                        title="HTML Preview"
+                        className="w-full h-full border-0 bg-white"
+                        sandbox="allow-scripts allow-same-origin"
+                      />
                     </TabsContent>
                   )}
                 </CardContent>
@@ -349,7 +345,7 @@ export default function Viewer() {
             </Card>
 
             {/* Footer info */}
-            <div className="text-center text-xs text-muted-foreground">
+            <div className="text-center text-xs text-muted-foreground shrink-0">
               <p>
                 Published from{" "}
                 <a
