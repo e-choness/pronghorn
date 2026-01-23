@@ -70,14 +70,14 @@ export default function Viewer() {
 
       const fetchedArtifact = data[0];
       setArtifact(fetchedArtifact);
-      
+
       // Set initial view mode based on content - detect HTML inline
       const content = fetchedArtifact.content?.trim().toLowerCase() || "";
-      const hasHtmlContent = 
+      const hasHtmlContent =
         content.startsWith("<!doctype html") ||
         content.startsWith("<html") ||
         (content.includes("<head") && content.includes("<body"));
-      
+
       if (hasHtmlContent) {
         setViewMode("html");
       }
@@ -120,7 +120,7 @@ export default function Viewer() {
                     ai_summary: (payload.new as any).ai_summary ?? prev.ai_summary,
                     updated_at: (payload.new as any).updated_at ?? prev.updated_at,
                   }
-                : null
+                : null,
             );
             toast.info("Content updated", { duration: 2000 });
           } else {
@@ -128,7 +128,7 @@ export default function Viewer() {
             setError("This artifact is no longer published");
             setArtifact(null);
           }
-        }
+        },
       )
       .on(
         "postgres_changes",
@@ -141,7 +141,7 @@ export default function Viewer() {
         () => {
           setError("This artifact has been deleted");
           setArtifact(null);
-        }
+        },
       )
       .subscribe((status) => {
         console.log("Viewer realtime status:", status);
@@ -155,7 +155,7 @@ export default function Viewer() {
   // Handle download
   const handleDownload = () => {
     if (!artifact) return;
-    
+
     const blob = new Blob([artifact.content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -175,11 +175,7 @@ export default function Viewer() {
     if (error || !artifact) {
       return <pre className="p-4 font-mono text-sm text-destructive">{error || "Not found"}</pre>;
     }
-    return (
-      <pre className="p-4 font-mono text-sm whitespace-pre-wrap break-words">
-        {artifact.content}
-      </pre>
-    );
+    return <pre className="p-4 font-mono text-sm whitespace-pre-wrap break-words">{artifact.content}</pre>;
   }
 
   // Binary mode - redirect to image or show error
@@ -215,12 +211,12 @@ export default function Viewer() {
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="container max-w-6xl mx-auto px-4 py-3">
+        <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 min-w-0">
-              <a 
-                href="https://pronghorn.red" 
-                target="_blank" 
+              <a
+                href="https://pronghorn.red"
+                target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 text-primary hover:opacity-80 transition-opacity shrink-0"
               >
@@ -229,22 +225,13 @@ export default function Viewer() {
                 </div>
                 <span className="font-semibold hidden sm:inline">Pronghorn</span>
               </a>
-              {!isLoading && artifact && (
-                <div className="h-6 w-px bg-border shrink-0" />
-              )}
+              {!isLoading && artifact && <div className="h-6 w-px bg-border shrink-0" />}
               <h1 className="text-lg font-medium truncate">
-                {isLoading ? (
-                  <Skeleton className="h-6 w-48" />
-                ) : artifact?.ai_title || "Untitled Artifact"}
+                {isLoading ? <Skeleton className="h-6 w-48" /> : artifact?.ai_title || "Untitled Artifact"}
               </h1>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={handleDownload}
-                disabled={!artifact}
-              >
+              <Button variant="outline" size="sm" onClick={handleDownload} disabled={!artifact}>
                 <Download className="h-4 w-4 mr-2" />
                 <span className="hidden sm:inline">Download</span>
               </Button>
@@ -306,25 +293,21 @@ export default function Viewer() {
                           <div className="mb-6 p-4 bg-muted/50 rounded-lg border">
                             <h3 className="text-sm font-medium mb-2 text-muted-foreground">Summary</h3>
                             <div className="prose prose-sm dark:prose-invert max-w-none">
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                {artifact.ai_summary}
-                              </ReactMarkdown>
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{artifact.ai_summary}</ReactMarkdown>
                             </div>
                           </div>
                         )}
                         {artifact.image_url && (
                           <div className="mb-6">
-                            <img 
-                              src={artifact.image_url} 
+                            <img
+                              src={artifact.image_url}
                               alt={artifact.ai_title || "Artifact image"}
                               className="max-w-full rounded-lg border"
                             />
                           </div>
                         )}
                         <div className="prose prose-sm dark:prose-invert max-w-none">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {artifact.content}
-                          </ReactMarkdown>
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{artifact.content}</ReactMarkdown>
                         </div>
                       </div>
                     </ScrollArea>
@@ -369,9 +352,9 @@ export default function Viewer() {
             <div className="text-center text-xs text-muted-foreground">
               <p>
                 Published from{" "}
-                <a 
-                  href="https://pronghorn.red" 
-                  target="_blank" 
+                <a
+                  href="https://pronghorn.red"
+                  target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary hover:underline inline-flex items-center gap-1"
                 >
