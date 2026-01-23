@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Download, FileText, Code, Globe, ExternalLink } from "lucide-react";
+import { Download, FileText, Code, Globe, ExternalLink, Maximize2, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Editor from "@monaco-editor/react";
@@ -33,6 +33,7 @@ export default function Viewer() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"preview" | "source" | "html">("preview");
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Determine which view mode based on URL path
   const isRawMode = location.pathname.endsWith("/raw");
@@ -92,6 +93,17 @@ export default function Viewer() {
   useEffect(() => {
     fetchArtifact();
   }, [artifactId]);
+
+  // Escape key to exit fullscreen
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isFullscreen]);
 
   // Set up real-time subscription for updates
   useEffect(() => {
@@ -231,8 +243,12 @@ export default function Viewer() {
               </h1>
             </div>
             <div className="flex items-center gap-2 shrink-0">
+              <Button variant="outline" size="sm" onClick={() => setIsFullscreen(true)} disabled={!artifact}>
+                <Maximize2 className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Fullscreen</span>
+              </Button>
               <Button variant="outline" size="sm" onClick={handleDownload} disabled={!artifact}>
-                <Download className="h-4 w-4 mr-2" />
+                <Download className="h-4 w-4 sm:mr-2" />
                 <span className="hidden sm:inline">Download</span>
               </Button>
             </div>
@@ -362,6 +378,77 @@ export default function Viewer() {
           </div>
         ) : null}
       </main>
+
+      {/* Fullscreen overlay */}
+      {isFullscreen && artifact && (
+        <div className="fixed inset-0 z-50 bg-background">
+          {/* Close button */}
+          <Button
+            variant="outline"
+            size="icon"
+            className="fixed top-4 right-4 z-50 bg-background/80 backdrop-blur-sm shadow-lg hover:bg-background"
+            onClick={() => setIsFullscreen(false)}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+
+          {/* Full height content based on current viewMode */}
+          <div className="w-full h-full">
+            {viewMode === "preview" && (
+              <ScrollArea className="h-full">
+                <div className="p-8 max-w-4xl mx-auto">
+                  {artifact.ai_summary && (
+                    <div className="mb-6 p-4 bg-muted/50 rounded-lg border">
+                      <h3 className="text-sm font-medium mb-2 text-muted-foreground">Summary</h3>
+                      <div className="prose prose-sm dark:prose-invert max-w-none">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{artifact.ai_summary}</ReactMarkdown>
+                      </div>
+                    </div>
+                  )}
+                  {artifact.image_url && (
+                    <div className="mb-6">
+                      <img
+                        src={artifact.image_url}
+                        alt={artifact.ai_title || "Artifact image"}
+                        className="max-w-full rounded-lg border"
+                      />
+                    </div>
+                  )}
+                  <div className="prose prose-sm dark:prose-invert max-w-none">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{artifact.content}</ReactMarkdown>
+                  </div>
+                </div>
+              </ScrollArea>
+            )}
+
+            {viewMode === "source" && (
+              <Editor
+                height="100%"
+                language="markdown"
+                value={artifact.content}
+                theme="vs-dark"
+                options={{
+                  readOnly: true,
+                  minimap: { enabled: false },
+                  lineNumbers: "on",
+                  wordWrap: "on",
+                  scrollBeyondLastLine: false,
+                  fontSize: 13,
+                }}
+              />
+            )}
+
+            {viewMode === "html" && isHtmlContent && (
+              <iframe
+                srcDoc={artifact.content}
+                title="HTML Preview Fullscreen"
+                className="w-full h-full border-0 bg-white"
+                sandbox="allow-scripts allow-same-origin"
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
