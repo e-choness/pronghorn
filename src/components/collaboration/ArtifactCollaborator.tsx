@@ -98,6 +98,8 @@ export function ArtifactCollaborator({
   const conversationHistoryRef = useRef<Array<{ role: string; content: string }>>([]);
   
   // Pending operation results to send back on next iteration
+  // Batch content tracking - ensures read_artifact sees latest content after edit_lines in same iteration
+  const batchContentRef = useRef<string | null>(null);
   const pendingOperationResultsRef = useRef<any[]>([]);
   
   // AbortController for cancel
@@ -477,13 +479,17 @@ export function ArtifactCollaborator({
   }, [collaborationId, shareToken, onMerged]);
 
   // Execute operations locally (client-side)
+  // Uses batchContentRef to track content changes within a single iteration
   const executeOperationLocally = useCallback(async (op: any): Promise<any> => {
+    // Use batch content if we're in the middle of processing operations, else use localContent
+    const currentContent = batchContentRef.current ?? localContent;
+    
     if (op.type === 'read_artifact') {
       // Return current content with line numbers
       return {
         type: 'read_artifact',
         success: true,
-        content: addLineNumbers(localContent),
+        content: addLineNumbers(currentContent),
       };
     }
     
@@ -501,15 +507,18 @@ export function ArtifactCollaborator({
       
       const contentToInsert = typeof new_content === 'string' ? new_content : String(new_content);
       
-      // Perform the edit locally
-      const lines = localContent.split('\n');
+      // Perform the edit locally using current batch content
+      const lines = currentContent.split('\n');
       const before = lines.slice(0, start_line - 1);
       const after = lines.slice(end_line);
       const newLines = contentToInsert.split('\n');
-      const newContent = [...before, ...newLines, ...after].join('\n');
+      const newContentStr = [...before, ...newLines, ...after].join('\n');
       
-      // Update local content
-      setLocalContent(newContent);
+      // Update batch ref for subsequent operations in same iteration
+      batchContentRef.current = newContentStr;
+      
+      // Update local content state
+      setLocalContent(newContentStr);
       
       // Save to database
       await insertEdit(
@@ -518,7 +527,7 @@ export function ArtifactCollaborator({
         end_line,
         lines.slice(start_line - 1, end_line).join('\n'),
         contentToInsert,
-        newContent,
+        newContentStr,
         narrative || 'Agent edit',
         'agent',
         'AI Agent'
@@ -681,6 +690,9 @@ export function ArtifactCollaborator({
                 const data = JSON.parse(dataStr);
                 
                 switch (data.type) {
+                  case 'heartbeat':
+                    // Keep-alive received, no action needed
+                    break;
                   case 'llm_streaming':
                     // Update character count for visual feedback
                     setStreamProgress(p => ({ ...p, charsReceived: data.charsReceived }));
@@ -711,11 +723,14 @@ export function ArtifactCollaborator({
         // Execute operations locally
         setStreamProgress(p => ({ ...p, status: 'processing' }));
         pendingOperationResultsRef.current = [];
+        batchContentRef.current = null;  // Reset batch tracking for this iteration
         
         for (const op of iterationResult.operations || []) {
           const result = await executeOperationLocally(op);
           pendingOperationResultsRef.current.push(result);
         }
+        
+        batchContentRef.current = null;  // Clear after batch
         
         // Handle blackboard entry
         if (iterationResult.blackboardEntry) {

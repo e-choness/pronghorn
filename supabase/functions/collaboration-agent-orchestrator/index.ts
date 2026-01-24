@@ -359,6 +359,11 @@ Start your response with { and end with }.`;
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
         };
 
+        // Heartbeat interval to keep connection alive during long LLM calls
+        const heartbeatInterval = setInterval(() => {
+          sendEvent({ type: 'heartbeat', timestamp: Date.now() });
+        }, 3000);
+        
         try {
           console.log(`\n=== Iteration ${iteration} ===`);
           sendEvent({ type: "iteration_start", iteration, maxIterations });
@@ -560,6 +565,8 @@ Start your response with { and end with }.`;
           // 3. Pass results back on next iteration
           
           // Update conversation history with assistant response
+          // NOTE: conversationHistory already includes operation results (added at lines 346-351)
+          // so this preserves the full context chain for the next iteration
           const updatedConversationHistory = [
             ...conversationHistory,
             { role: "assistant", content: JSON.stringify(parsed) }
@@ -600,8 +607,10 @@ Start your response with { and end with }.`;
             }
           }
 
+          clearInterval(heartbeatInterval);
           controller.close();
         } catch (error) {
+          clearInterval(heartbeatInterval);
           console.error("Collaboration agent error:", error);
           sendEvent({ type: "error", message: (error as Error).message });
           controller.close();
