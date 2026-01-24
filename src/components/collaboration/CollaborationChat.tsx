@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -47,7 +47,7 @@ interface CollaborationChatProps {
   onStop?: () => void;
 }
 
-export function CollaborationChat({
+function CollaborationChatInner({
   messages,
   blackboard,
   isStreaming,
@@ -69,6 +69,13 @@ export function CollaborationChat({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [expandedBlackboard, setExpandedBlackboard] = useState<Set<string>>(new Set());
+  
+  // Sync from parent when inputValue changes externally (e.g., "Ask AI" button)
+  useEffect(() => {
+    if (inputValue !== undefined && inputValue !== localInput) {
+      setLocalInput(inputValue);
+    }
+  }, [inputValue]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -340,3 +347,6 @@ export function CollaborationChat({
     </div>
   );
 }
+
+// Memoize the component to prevent re-renders when parent state changes
+export const CollaborationChat = memo(CollaborationChatInner);

@@ -145,6 +145,10 @@ export function ArtifactCollaborator({
   
   // Persistent chat input state - survives tab switches and navigation
   const [chatInputValue, setChatInputValue] = useState('');
+  
+  // Memoized callbacks for CollaborationChat to prevent re-renders
+  const handleOpenProjectSelector = useCallback(() => setIsProjectSelectorOpen(true), []);
+  const handleClearContext = useCallback(() => setAttachedContext(null), []);
 
   const {
     collaboration,
@@ -1247,8 +1251,8 @@ export function ArtifactCollaborator({
               streamingContent={streamingContent}
               onSendMessage={handleSendMessage}
               attachedCount={totalAttachments}
-              onAttach={() => setIsProjectSelectorOpen(true)}
-              onClearContext={() => setAttachedContext(null)}
+              onAttach={handleOpenProjectSelector}
+              onClearContext={handleClearContext}
               inputValue={chatInputValue}
               onInputChange={setChatInputValue}
               streamProgress={streamProgress}
