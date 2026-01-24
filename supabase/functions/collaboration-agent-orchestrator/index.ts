@@ -322,18 +322,8 @@ Start your response with { and end with }.`;
     let conversationHistory: Array<{ role: string; content: string }> = [];
     
     if (isFirstIteration) {
-      // First iteration: add user message to DB and build initial conversation
-      await supabase.rpc(
-        "insert_collaboration_message_with_token",
-        {
-          p_collaboration_id: collaborationId,
-          p_token: shareToken,
-          p_role: "user",
-          p_content: userMessage || "",
-          p_metadata: {},
-        }
-      );
-      
+      // First iteration: build initial conversation
+      // NOTE: User message is already persisted by frontend - don't duplicate here
       conversationHistory.push({ 
         role: "user", 
         content: `Document to collaborate on:\n${addLineNumbers(initialDocumentContent)}\n\nUser request: ${userMessage}` 
