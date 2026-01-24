@@ -82,7 +82,7 @@ export function CodeBlockViewer({ code, language, onAddArtifact }: CodeBlockView
     return (
       <div className={cn(height, "overflow-auto")}>
         {viewMode === 'preview' && (
-          <pre className="p-4 text-sm overflow-x-auto bg-muted/20 h-full">
+          <pre className="p-4 text-sm overflow-x-auto bg-muted/20 h-full text-foreground">
             <code className={cn(
               "block whitespace-pre-wrap break-words",
               language && `language-${language}`
