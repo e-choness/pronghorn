@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -63,10 +63,8 @@ export function CollaborationChat({
   streamProgress,
   onStop,
 }: CollaborationChatProps) {
-  // Use controlled state if provided, otherwise use local state as fallback
-  const [localInput, setLocalInput] = useState('');
-  const input = inputValue !== undefined ? inputValue : localInput;
-  const setInput = onInputChange || setLocalInput;
+  // Use local state for fast typing, sync to parent on blur/submit
+  const [localInput, setLocalInput] = useState(inputValue || '');
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -77,14 +75,15 @@ export function CollaborationChat({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent, blackboard]);
 
-  const handleSubmit = () => {
-    const trimmedInput = input.trim();
+  const handleSubmit = useCallback(() => {
+    const trimmedInput = localInput.trim();
     if (!trimmedInput || isStreaming || disabled) return;
     onSendMessage(trimmedInput);
-    setInput('');
+    setLocalInput('');
+    onInputChange?.('');
     // Keep focus on textarea after sending
     setTimeout(() => textareaRef.current?.focus(), 0);
-  };
+  }, [localInput, isStreaming, disabled, onSendMessage, onInputChange]);
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -129,10 +128,17 @@ export function CollaborationChat({
     }
   };
 
-  // Interleave messages and blackboard entries by timestamp
-  const combinedTimeline = [...messages.map(m => ({ ...m, _type: 'message' as const })), 
-    ...(showBlackboard ? blackboard.map(b => ({ ...b, _type: 'blackboard' as const })) : [])
-  ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  // Memoize timeline to avoid recalculating on every keystroke
+  const combinedTimeline = useMemo(() => {
+    return [...messages.map(m => ({ ...m, _type: 'message' as const })), 
+      ...(showBlackboard ? blackboard.map(b => ({ ...b, _type: 'blackboard' as const })) : [])
+    ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  }, [messages, blackboard, showBlackboard]);
+
+  // Sync parent input on blur to preserve across tab switches
+  const handleBlur = useCallback(() => {
+    onInputChange?.(localInput);
+  }, [localInput, onInputChange]);
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden">
@@ -295,8 +301,9 @@ export function CollaborationChat({
         <div className="flex gap-2">
           <Textarea
             ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
+            value={localInput}
+            onChange={(e) => setLocalInput(e.target.value)}
+            onBlur={handleBlur}
             onKeyDown={handleKeyDown}
             placeholder="Ask the AI..."
             className="min-h-[44px] max-h-[80px] resize-none text-sm"
@@ -306,7 +313,7 @@ export function CollaborationChat({
             <Button
               type="submit"
               size="icon"
-              disabled={!input.trim() || isStreaming || disabled}
+              disabled={!localInput.trim() || isStreaming || disabled}
               className="h-8 w-8"
             >
               {isStreaming ? (
