@@ -55,7 +55,10 @@ export function useRealtimeCollaboration(
 
   // Load messages
   const loadMessages = useCallback(async () => {
-    if (!collaborationId || !isTokenSet) return;
+    if (!collaborationId || !isTokenSet) {
+      console.log('[Collab] loadMessages skipped - collabId:', !!collaborationId, 'isTokenSet:', isTokenSet);
+      return;
+    }
 
     try {
       const { data, error } = await supabase.rpc("get_collaboration_messages_with_token", {
@@ -63,7 +66,17 @@ export function useRealtimeCollaboration(
         p_token: shareToken,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('[Collab] loadMessages error:', error);
+        throw error;
+      }
+      
+      const roles = data?.reduce((acc: Record<string, number>, m: any) => {
+        acc[m.role] = (acc[m.role] || 0) + 1;
+        return acc;
+      }, {});
+      console.log('[Collab] Loaded messages:', data?.length, 'by role:', roles);
+      
       setMessages(data || []);
     } catch (error) {
       console.error("Error loading messages:", error);
