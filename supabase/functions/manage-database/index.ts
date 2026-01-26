@@ -439,7 +439,7 @@ async function executeSqlMulti(
 // ============== End Multi-Query Execution ==============
 
 interface ManageDatabaseRequest {
-  action: 'get_schema' | 'execute_sql' | 'execute_sql_batch' | 'get_table_data' | 'get_table_columns' | 'export_table' 
+  action: 'get_schema' | 'execute_sql' | 'execute_sql_stream' | 'execute_sql_batch' | 'get_table_data' | 'get_table_columns' | 'export_table' 
     | 'get_table_definition' | 'get_view_definition' | 'get_function_definition' 
     | 'get_trigger_definition' | 'get_index_definition' | 'get_sequence_info' | 'get_type_definition'
     | 'get_table_structure' | 'test_connection';
@@ -468,6 +468,8 @@ interface ManageDatabaseRequest {
   orderDir?: 'asc' | 'desc';
   // For export_table
   format?: 'json' | 'csv' | 'sql';
+  // For execute_sql_stream - chunk size
+  chunkSize?: number;
 }
 
 /**
@@ -748,6 +750,131 @@ Deno.serve(async (req) => {
             }
           }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
+      }
+      case 'execute_sql_stream': {
+        // Streaming query execution - returns SSE for large result sets
+        if (role !== 'owner' && role !== 'editor') {
+          throw new Error("Editor or owner role required for SQL execution");
+        }
+        if (!body.sql) {
+          throw new Error("SQL query is required");
+        }
+        
+        const sqlQuery = body.sql;
+        const chunkSize = body.chunkSize || 500; // Default to 500 rows per chunk
+        
+        // Return SSE stream
+        return new Response(
+          new ReadableStream({
+            async start(controller) {
+              const encoder = new TextEncoder();
+              const sendSSE = (event: string, data: any) => {
+                controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+              };
+              
+              let client: Client | null = null;
+              
+              try {
+                sendSSE('start', { message: 'Connecting to database...' });
+                
+                client = createDbClient(connectionString, caCertificate);
+                await client.connect();
+                
+                sendSSE('connected', { message: 'Executing query...' });
+                
+                const startTime = Date.now();
+                
+                // Use cursor-based streaming to avoid loading all rows into memory
+                const cursorName = `stream_cursor_${Date.now()}`;
+                
+                // Start a transaction and declare cursor
+                await client.queryObject("BEGIN");
+                await client.queryObject(`DECLARE ${cursorName} CURSOR FOR ${sqlQuery}`);
+                
+                let columns: string[] = [];
+                let totalRows = 0;
+                let chunkIndex = 0;
+                let isFirstChunk = true;
+                
+                // Fetch in chunks
+                while (true) {
+                  const chunkResult = await client.queryObject(`FETCH ${chunkSize} FROM ${cursorName}`);
+                  const rows = chunkResult.rows as Record<string, unknown>[];
+                  
+                  if (isFirstChunk) {
+                    // Get columns from first result
+                    columns = (chunkResult.columns || []) as string[];
+                    sendSSE('columns', { columns });
+                    isFirstChunk = false;
+                  }
+                  
+                  if (rows.length === 0) {
+                    // No more rows
+                    break;
+                  }
+                  
+                  totalRows += rows.length;
+                  
+                  // Serialize and send this chunk
+                  const serializedRows = serializeSpecialTypes(rows);
+                  sendSSE('chunk', { 
+                    chunkIndex, 
+                    rows: serializedRows,
+                    rowCount: rows.length,
+                    totalSoFar: totalRows
+                  });
+                  
+                  chunkIndex++;
+                  
+                  // If we got fewer rows than chunk size, we're done
+                  if (rows.length < chunkSize) {
+                    break;
+                  }
+                }
+                
+                // Close cursor and commit
+                await client.queryObject(`CLOSE ${cursorName}`);
+                await client.queryObject("COMMIT");
+                
+                const executionTime = Date.now() - startTime;
+                
+                sendSSE('complete', { 
+                  totalRows,
+                  executionTime,
+                  columns,
+                  chunksCount: chunkIndex
+                });
+                
+              } catch (error: unknown) {
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                console.error("[manage-database] Stream execution error:", errorMessage);
+                sendSSE('error', { error: errorMessage });
+                
+                // Try to rollback if we had a transaction
+                if (client) {
+                  try {
+                    await client.queryObject("ROLLBACK");
+                  } catch { /* ignore rollback errors */ }
+                }
+              } finally {
+                if (client) {
+                  try {
+                    await client.end();
+                  } catch { /* ignore close errors */ }
+                }
+                controller.close();
+              }
+            }
+          }),
+          {
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              "Connection": "keep-alive",
+            },
+          }
+        );
       }
       case 'get_table_data':
         if (!body.schema || !body.table) {

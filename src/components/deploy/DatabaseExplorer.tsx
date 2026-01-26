@@ -110,6 +110,15 @@ export function DatabaseExplorer({ database, externalConnection, shareToken, onB
   } | null>(null);
   const [multiResultTab, setMultiResultTab] = useState("0");
   
+  // Streaming state
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingProgress, setStreamingProgress] = useState<{
+    status: string;
+    rowsReceived: number;
+    chunksReceived: number;
+  } | null>(null);
+  const streamAbortController = useRef<AbortController | null>(null);
+  
   const [selectedTable, setSelectedTable] = useState<{ schema: string; table: string } | null>(null);
   const [tableData, setTableData] = useState<{ columns: string[]; rows: any[]; totalRows: number; offset: number; } | null>(null);
   const [tableStructure, setTableStructure] = useState<{ columns: any[]; indexes: any[] } | null>(null);
@@ -217,6 +226,130 @@ export function DatabaseExplorer({ database, externalConnection, shareToken, onB
 
   const silentRefresh = useCallback(() => { loadSchema(true); }, [loadSchema]);
 
+  // Streaming query execution for large result sets
+  const handleExecuteQueryStreaming = useCallback(async (sql: string) => {
+    setIsStreaming(true);
+    setStreamingProgress({ status: 'Connecting...', rowsReceived: 0, chunksReceived: 0 });
+    setQueryResults(null);
+    
+    // Build request body
+    const body: any = { action: 'execute_sql_stream', shareToken, sql, chunkSize: 500 };
+    if (isExternal && connectionId) {
+      body.connectionId = connectionId;
+    } else if (databaseId) {
+      body.databaseId = databaseId;
+    }
+    
+    const abortController = new AbortController();
+    streamAbortController.current = abortController;
+    
+    const accumulatedRows: any[] = [];
+    let columns: string[] = [];
+    let executionTime = 0;
+    
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-database`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify(body),
+        signal: abortController.signal,
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+      
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response body');
+      
+      const decoder = new TextDecoder();
+      let buffer = '';
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            // Skip event line, data is on next
+            continue;
+          }
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6);
+            try {
+              const data = JSON.parse(jsonStr);
+              
+              // Handle different event types based on data content
+              if (data.columns && !data.rows) {
+                // columns event
+                columns = data.columns;
+                setStreamingProgress(prev => ({ ...prev!, status: 'Receiving rows...' }));
+              } else if (data.rows && data.chunkIndex !== undefined) {
+                // chunk event
+                accumulatedRows.push(...data.rows);
+                setStreamingProgress({
+                  status: `Receiving rows...`,
+                  rowsReceived: data.totalSoFar,
+                  chunksReceived: data.chunkIndex + 1,
+                });
+              } else if (data.totalRows !== undefined && data.executionTime !== undefined && data.chunksCount !== undefined) {
+                // complete event
+                executionTime = data.executionTime;
+              } else if (data.error) {
+                // error event
+                throw new Error(data.error);
+              } else if (data.message) {
+                // status messages (start, connected)
+                setStreamingProgress(prev => ({ ...prev!, status: data.message }));
+              }
+            } catch (parseError) {
+              console.warn('Failed to parse SSE data:', jsonStr, parseError);
+            }
+          }
+        }
+      }
+      
+      // Set final results
+      setQueryResults({
+        isMultiResult: false,
+        single: {
+          columns,
+          rows: accumulatedRows,
+          executionTime,
+          totalRows: accumulatedRows.length,
+        }
+      });
+      
+      toast.success(`Query streamed: ${accumulatedRows.length} rows in ${executionTime}ms`);
+      silentRefresh();
+      if (isMobile) setMobileActiveTab("results");
+      
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        toast.info('Query streaming cancelled');
+      } else {
+        toast.error("Streaming query failed: " + error.message);
+        setQueryResults({ 
+          isMultiResult: false, 
+          single: { columns: ['Error'], rows: [{ Error: error.message }] } 
+        });
+      }
+    } finally {
+      setIsStreaming(false);
+      setStreamingProgress(null);
+      streamAbortController.current = null;
+    }
+  }, [databaseId, connectionId, shareToken, isExternal, isMobile, silentRefresh]);
+
   const handleExecuteQuery = async (sql: string) => {
     setIsExecuting(true);
     setQueryResults(null);
@@ -274,6 +407,14 @@ export function DatabaseExplorer({ database, externalConnection, shareToken, onB
       silentRefresh();
       if (isMobile) setMobileActiveTab("results");
     } catch (error: any) {
+      // Check if it's a WORKER_LIMIT error - if so, retry with streaming
+      if (error.message?.includes('WORKER_LIMIT') || error.message?.includes('compute resources')) {
+        toast.info('Query too large for single request, switching to streaming mode...');
+        setIsExecuting(false);
+        await handleExecuteQueryStreaming(sql);
+        return;
+      }
+      
       toast.error("Query failed: " + error.message);
       setQueryResults({ 
         isMultiResult: false, 
@@ -701,6 +842,25 @@ export function DatabaseExplorer({ database, externalConnection, shareToken, onB
                         onExport={handleExportQueryResults} 
                       />
                     )
+                  ) : isStreaming && streamingProgress ? (
+                    <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                      <div className="text-center">
+                        <p className="text-sm font-medium">{streamingProgress.status}</p>
+                        {streamingProgress.rowsReceived > 0 && (
+                          <p className="text-xs mt-1">
+                            {streamingProgress.rowsReceived.toLocaleString()} rows received ({streamingProgress.chunksReceived} chunks)
+                          </p>
+                        )}
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => streamAbortController.current?.abort()}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
                   ) : (
                     <div className="flex items-center justify-center h-full text-muted-foreground">
                       <p className="text-sm">Run a query to see results</p>
@@ -784,6 +944,25 @@ export function DatabaseExplorer({ database, externalConnection, shareToken, onB
             onExport={handleExportQueryResults} 
           />
         )
+      ) : isStreaming && streamingProgress ? (
+        <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <div className="text-center">
+            <p className="text-sm font-medium">{streamingProgress.status}</p>
+            {streamingProgress.rowsReceived > 0 && (
+              <p className="text-xs mt-1">
+                {streamingProgress.rowsReceived.toLocaleString()} rows ({streamingProgress.chunksReceived} chunks)
+              </p>
+            )}
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => streamAbortController.current?.abort()}
+          >
+            Cancel
+          </Button>
+        </div>
       ) : (
         <div className="flex items-center justify-center h-full text-muted-foreground">
           <p className="text-sm">Run a query or select a table to see results</p>
