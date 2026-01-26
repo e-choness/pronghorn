@@ -60,7 +60,7 @@
       }
     },
     "edit_lines": {
-      "description": "Edit specific line range in a file. Returns VERIFICATION object showing lines replaced/inserted, preview of changes, and surrounding context. Use line numbers from <<N>> prefix in read_file. IMPORTANT: When making multiple edits to same file, edit from BOTTOM to TOP (highest line numbers first) to prevent line drift.",
+      "description": "Edit specific line range in a file. Returns VERIFICATION object AND fresh_content with UPDATED line numbers. The fresh_content supersedes any previous read_file for this path - DO NOT re-read after editing. When making multiple edits to same file in one response, order BOTTOM to TOP (highest line numbers first).",
       "category": "write",
       "enabled": true,
       "params": {
@@ -77,7 +77,7 @@
         "start_line": {
           "type": "integer",
           "required": true,
-          "description": "Starting line number (1-based, from <<N>> prefix in read_file)"
+          "description": "Starting line number (1-based, from <<N>> prefix in read_file or fresh_content)"
         },
         "end_line": {
           "type": "integer",
