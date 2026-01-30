@@ -1,117 +1,70 @@
 
 
-## Plan: Fix Contradictory Prompt Rules Causing Slow Agent
+## Plan: Fix Empty Build Command Being Replaced with Default
 
-### Problem Identified
+### Problem
 
-The agent is slow because of **contradictory instructions** in the prompt template:
+When deploying a static web app, the user deletes the build command (sets it to `""`) but it keeps getting replaced with `"npm run build"`. This causes deployment failures.
 
-| Section | Order | Rule | Conflict |
-|---------|-------|------|----------|
-| `critical_rules` | 4 | "MANDATORY: Call read_file BEFORE edit_lines" | **Causes read before EVERY edit** |
-| `operation_batching` | 8 | "AFTER EDITING, DO NOT RE-READ" | Ignored - lower priority |
-| `edit_safety` | 8.5 | "You do NOT need to read_file again after editing" | Ignored - lower priority |
+**Root Cause**: In `supabase/functions/render-service/index.ts`, the code uses the `||` operator:
 
-The agent follows the **higher-priority** `critical_rules` (order 4), which mandates reading before every edit, causing:
-- One edit per iteration
-- Redundant file reads
-- Extremely slow performance
+```typescript
+buildCommand: deployment.build_command || 'npm run build'
+```
+
+In JavaScript, an empty string `""` is falsy, so `"" || 'npm run build'` evaluates to `'npm run build'`. The user's intentional blank value is being overwritten.
+
+---
 
 ### Solution
 
-Update `critical_rules` to clarify that `read_file` is only needed for **first access**, not every edit. The `fresh_content` from edits provides updated line numbers.
+Replace the `||` operator with a nullish coalescing operator (`??`) or explicit check for `null`/`undefined`. This preserves empty strings as valid values.
+
+**Change**: `deployment.build_command || 'default'` → `deployment.build_command ?? 'default'`
+
+The `??` operator only uses the fallback when the value is `null` or `undefined`, NOT when it's an empty string.
 
 ---
 
 ### Implementation
 
-**File: `public/data/codingAgentPromptTemplate.json`**
+**File: `supabase/functions/render-service/index.ts`**
 
-Update the `critical_rules` content (line 50) to replace the conflicting rule 5:
-
-**Current (causing slowness):**
-```
-EDITING:
-4. ALWAYS use edit_lines for targeted changes - preserves git blame, cleaner diffs
-5. MANDATORY: Call read_file BEFORE edit_lines to see current content and line numbers
-6. Prefer "path" over "file_id" for operations - system resolves paths automatically
-7. After edit_lines, check the verification object to confirm your edit worked
-```
-
-**Updated (efficient):**
-```
-EDITING:
-4. ALWAYS use edit_lines for targeted changes - preserves git blame, cleaner diffs
-5. Call read_file BEFORE editing a file for the FIRST TIME this session
-6. AFTER edit_lines, use the 'fresh_content' from the result - DO NOT re-read the same file
-7. Prefer "path" over "file_id" for operations - system resolves paths automatically
-8. After edit_lines, check the verification object to confirm your edit worked
-```
-
-Also update the WORKFLOW section to renumber and add batching emphasis:
-
-**Updated WORKFLOW:**
-```
-WORKFLOW:
-9. Work autonomously - chain operations, DO NOT stop after a single operation
-10. BATCH AGGRESSIVELY: Include 5-20 operations per response - single-operation responses are wasteful
-11. ALWAYS include a blackboard_entry in EVERY response (required)
-12. Before status='completed', call get_staged_changes to verify your changes
-
-STATUS VALUES:
-13. "in_progress" - need more operations
-14. "completed" - ONLY after exhaustive validation
-```
+| Line | Current | Fixed |
+|------|---------|-------|
+| 231 | `buildCommand: deployment.build_command \|\| 'npm run build'` | `buildCommand: deployment.build_command ?? 'npm run build'` |
+| 232 | `publishPath: deployment.build_folder \|\| 'dist'` | `publishPath: deployment.build_folder ?? 'dist'` |
+| 239 | `buildCommand: deployment.build_command \|\| 'npm install'` | `buildCommand: deployment.build_command ?? 'npm install'` |
+| 240 | `startCommand: deployment.run_command \|\| 'npm start'` | `startCommand: deployment.run_command ?? 'npm start'` |
+| 926 | `buildCommand: deployment.build_command \|\| 'npm run build'` | `buildCommand: deployment.build_command ?? 'npm run build'` |
+| 927 | `publishPath: deployment.build_folder \|\| 'dist'` | `publishPath: deployment.build_folder ?? 'dist'` |
+| 932 | `buildCommand: deployment.build_command \|\| 'npm install'` | `buildCommand: deployment.build_command ?? 'npm install'` |
+| 933 | `startCommand: deployment.run_command \|\| 'npm start'` | `startCommand: deployment.run_command ?? 'npm start'` |
 
 ---
 
 ### Technical Details
 
-The full updated `content` value for `critical_rules` section:
-
-```
-=== CRITICAL RULES ===
-
-Here are your standard operating procedures:
-
-DISCOVERY:
-1. If user attached files, use read_file directly with provided file_ids.
-2. If no files attached, start with list_files or wildcard_search to get current file IDs
-3. Use wildcard_search when you have concepts/keywords to find
-
-EDITING:
-4. ALWAYS use edit_lines for targeted changes - preserves git blame, cleaner diffs
-5. Call read_file BEFORE editing a file for the FIRST TIME this session
-6. AFTER edit_lines, use the 'fresh_content' from the result - DO NOT re-read the same file
-7. Prefer "path" over "file_id" for operations - system resolves paths automatically
-8. After edit_lines, check the verification object to confirm your edit worked
-
-WORKFLOW:
-9. Work autonomously - chain operations, DO NOT stop after a single operation
-10. BATCH AGGRESSIVELY: Include 5-20 operations per response - single-operation responses are wasteful
-11. ALWAYS include a blackboard_entry in EVERY response (required)
-12. Before status='completed', call get_staged_changes to verify your changes
-
-STATUS VALUES:
-13. "in_progress" - need more operations
-14. "completed" - ONLY after exhaustive validation
-```
+| Scenario | Before (`\|\|`) | After (`??`) |
+|----------|-----------------|--------------|
+| `build_command = null` | Uses default | Uses default |
+| `build_command = undefined` | Uses default | Uses default |
+| `build_command = ""` (empty) | **Uses default (BUG)** | **Keeps empty (FIXED)** |
+| `build_command = "npm run build"` | Uses value | Uses value |
 
 ---
 
 ### Files to Modify
 
-| File | Change |
-|------|--------|
-| `public/data/codingAgentPromptTemplate.json` | Update `critical_rules` content to fix contradictory read_file instruction and add batching emphasis |
+| File | Changes |
+|------|---------|
+| `supabase/functions/render-service/index.ts` | Replace 8 occurrences of `\|\|` with `??` for build/run commands and paths |
 
 ---
 
 ### Expected Outcome
 
-| Before | After |
-|--------|-------|
-| Agent reads file before EVERY edit | Agent reads once per file, uses fresh_content thereafter |
-| 1 edit per iteration | 5-20 operations per iteration |
-| read → edit → read → edit loop | read A,B,C → edit A,A,A,B,B,C pattern |
+- Static web apps with blank build commands will deploy correctly
+- User-specified empty values will be preserved
+- Explicit defaults only apply when no value was set (null/undefined)
 
