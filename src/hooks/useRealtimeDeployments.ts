@@ -35,7 +35,8 @@ export const useRealtimeDeployments = (
               existing.status !== updated.status ||
               existing.render_service_id !== updated.render_service_id ||
               existing.url !== updated.url ||
-              existing.last_deployed_at !== updated.last_deployed_at) {
+              existing.last_deployed_at !== updated.last_deployed_at ||
+              existing.updated_at !== updated.updated_at) {  // Check updated_at to catch any field change
             hasChanges = true;
             break;
           }
@@ -47,12 +48,8 @@ export const useRealtimeDeployments = (
       // Merge: update existing items in place, add new ones, remove deleted ones
       const result = newData.map(newDep => {
         const existing = prev.find(p => p.id === newDep.id);
-        // If fields are the same, preserve the existing object reference
-        if (existing &&
-            existing.status === newDep.status &&
-            existing.render_service_id === newDep.render_service_id &&
-            existing.url === newDep.url &&
-            existing.last_deployed_at === newDep.last_deployed_at) {
+        // If updated_at is the same, preserve the existing object reference (no changes)
+        if (existing && existing.updated_at === newDep.updated_at) {
           return existing;
         }
         return newDep;
