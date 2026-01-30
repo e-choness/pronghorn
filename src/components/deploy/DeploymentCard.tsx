@@ -219,10 +219,11 @@ const DeploymentCard = ({ deployment, shareToken, onUpdate, onSelect, isSelected
                   href={getDeploymentUrl()} 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1 hover:text-foreground transition-colors"
+                  className="flex items-center gap-1 hover:text-foreground transition-colors font-mono truncate max-w-[280px] sm:max-w-none"
+                  title={getDeploymentUrl()}
                 >
                   <ExternalLink className="h-3 w-3 shrink-0" />
-                  <span>Open Service</span>
+                  <span className="truncate">{getDeploymentUrl().replace('https://', '')}</span>
                 </a>
                 <button
                   onClick={(e) => {
