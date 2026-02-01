@@ -1,151 +1,86 @@
 
-## Plan: Stop Automatic Refreshing That Resets Deployment Configuration Dialog
 
-### Problem Summary
+## Plan: Simple BYTEA Column Handling to Prevent OOM Crashes
 
-The Cloud Deployments view is auto-refreshing every few seconds, causing the Deployment Configuration dialog to lose user input. The refreshing occurs through multiple mechanisms:
-
-| Source | Trigger | Result |
-|--------|---------|--------|
-| `DeploymentCard.tsx` lines 82-98 | 10-second interval during "building"/"deploying" status | Calls `onUpdate()` → parent refreshes |
-| `useRealtimeDeployments.ts` lines 145-157 | Supabase realtime `postgres_changes` subscription | Calls `loadDeployments()` on ANY database change |
-| Realtime broadcast | Any client triggering `broadcastRefresh()` | Calls `loadDeployments()` |
-
-### Root Cause
-
-When the `render-service` edge function is called for status sync, it updates the `project_deployments` table. This triggers the Supabase realtime subscription, which reloads all deployments. Even though `mergeDeployments()` tries to preserve object references, the cascading updates cause React to re-render components, potentially resetting dialog state.
-
----
+### Problem
+When tables contain large binary files (`bytea` columns), the `SELECT *` in `getTableData` loads the entire binary data into memory, causing the edge function to crash with `WORKER_LIMIT`.
 
 ### Solution
-
-Remove automatic refreshing completely. Refreshes should ONLY occur:
-1. **Initial page load** - when the Deploy page mounts
-2. **User clicks Refresh button** - the button at the top of the page
-3. **User clicks "Sync status from Render" button** - the small refresh icon on each card
+Before executing the main query, check which columns are `bytea` type. For those columns, replace the value with a size indicator instead of the actual binary data.
 
 ---
 
 ### Implementation
 
-#### 1. Remove Auto-Refresh Interval from DeploymentCard
+**File: `supabase/functions/manage-database/index.ts`**
 
-**File: `src/components/deploy/DeploymentCard.tsx`**
+Modify the `getTableData` function (lines 1262-1312):
 
-Remove the entire auto-refresh mechanism (lines 51-98):
+1. First, query `information_schema.columns` to find which columns are `bytea` type
+2. Build a dynamic SELECT that wraps bytea columns in a size indicator
+3. Return a list of which columns were replaced (so the UI knows)
 
-| Lines | Change |
-|-------|--------|
-| 51 | Remove `autoRefreshRef` |
-| 55-56 | Remove `isTransitionalStatus` constant |
-| 58-80 | Keep `syncStatus` but only for manual button use |
-| 82-98 | **DELETE** the entire `useEffect` that sets up the interval |
+#### Before (current code)
+```typescript
+let query = `SELECT * FROM "${safeSchema}"."${safeTable}"`;
+```
 
-The `syncStatus` function will still exist for the manual "Sync status from Render" button (line 129: `handleSyncStatus`), but no automatic calling.
+#### After (new approach)
+```typescript
+// Step 1: Get column types
+const colTypesResult = await client.queryObject<{
+  column_name: string;
+  udt_name: string;
+}>`
+  SELECT column_name, udt_name
+  FROM information_schema.columns
+  WHERE table_schema = ${schema} AND table_name = ${table}
+  ORDER BY ordinal_position
+`;
 
-#### 2. Remove Realtime Subscription from useRealtimeDeployments
+// Step 2: Build SELECT with bytea columns replaced
+const byteaColumns: string[] = [];
+const selectParts = colTypesResult.rows.map(col => {
+  const safeName = `"${col.column_name.replace(/"/g, '""')}"`;
+  if (col.udt_name === 'bytea') {
+    byteaColumns.push(col.column_name);
+    // Return size indicator instead of actual data
+    return `CASE 
+      WHEN ${safeName} IS NULL THEN NULL
+      ELSE '[binary: ' || pg_size_pretty(octet_length(${safeName})::bigint) || ']'
+    END AS ${safeName}`;
+  }
+  return safeName;
+});
 
-**File: `src/hooks/useRealtimeDeployments.ts`**
-
-Remove the Supabase realtime channel completely. The hook will:
-- Load deployments on initial mount only
-- Provide `refresh` function for manual refresh
-- NOT listen to database changes automatically
-
-| Lines | Change |
-|-------|--------|
-| 15-16 | Remove `channelRef` and `deploymentsRef` (keep `deploymentsRef` if still needed for `refreshFromRender`) |
-| 140-168 | Replace the `useEffect` that sets up the channel - only keep `loadDeployments()` on initial mount |
+let query = `SELECT ${selectParts.join(', ')} FROM "${safeSchema}"."${safeTable}"`;
+```
 
 ---
 
 ### Technical Details
 
-#### DeploymentCard.tsx Changes
+| Aspect | Details |
+|--------|---------|
+| Extra query | One fast metadata query to `information_schema.columns` |
+| Output for bytea | `[binary: 15 MB]` or `[binary: 2 kB]` or `NULL` |
+| Response addition | Return `byteaColumns: string[]` so frontend knows which columns were replaced |
 
-```typescript
-// REMOVE these lines entirely:
-const autoRefreshRef = useRef<NodeJS.Timeout | null>(null);
+### Example Output
 
-// Check if status is transitional (should auto-refresh)
-const isTransitionalStatus = deployment.status === "building" || deployment.status === "deploying";
+For a table with columns `id`, `name`, `file_data` (bytea):
 
-// Setup auto-refresh when status is transitional
-useEffect(() => {
-  if (isTransitionalStatus && deployment.render_service_id) {
-    autoRefreshRef.current = setInterval(syncStatus, 10000);
-  } else {
-    if (autoRefreshRef.current) {
-      clearInterval(autoRefreshRef.current);
-      autoRefreshRef.current = null;
-    }
-  }
-
-  return () => {
-    if (autoRefreshRef.current) {
-      clearInterval(autoRefreshRef.current);
-    }
-  };
-}, [isTransitionalStatus, deployment.render_service_id, syncStatus]);
-```
-
-Keep `syncStatus` for the manual button but remove the auto-invocation.
-
-#### useRealtimeDeployments.ts Changes
-
-```typescript
-// BEFORE: Complex realtime subscription
-useEffect(() => {
-  loadDeployments();
-
-  if (!projectId || !enabled) return;
-
-  const channel = supabase
-    .channel(`deployments-${projectId}`)
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "project_deployments", filter: `project_id=eq.${projectId}` },
-      () => loadDeployments()
-    )
-    .on("broadcast", { event: "deployment_refresh" }, () => loadDeployments())
-    .subscribe();
-
-  channelRef.current = channel;
-
-  return () => { ... };
-}, [...]);
-
-// AFTER: Simple initial load only
-useEffect(() => {
-  loadDeployments();
-}, [loadDeployments]);
-```
-
-Remove `channelRef` since broadcast is no longer needed. Keep `deploymentsRef` as it's used by `refreshFromRender`.
+| id | name | file_data |
+|----|------|-----------|
+| 1 | document.pdf | [binary: 2457 kB] |
+| 2 | image.png | [binary: 156 kB] |
+| 3 | empty | NULL |
 
 ---
 
 ### Files to Modify
 
-| File | Changes |
-|------|---------|
-| `src/components/deploy/DeploymentCard.tsx` | Remove auto-refresh interval, keep manual sync button |
-| `src/hooks/useRealtimeDeployments.ts` | Remove realtime subscription, keep only initial load |
+| File | Change |
+|------|--------|
+| `supabase/functions/manage-database/index.ts` | Update `getTableData` to detect bytea columns and replace with size indicator |
 
----
-
-### User Experience After Fix
-
-| Scenario | Before | After |
-|----------|--------|-------|
-| Open Deployment Config, wait 10 seconds | Dialog resets/closes | Dialog stays open |
-| Deployment in "building" status | Auto-refreshes every 10s | User clicks Refresh manually |
-| Another user triggers deploy | Auto-refreshes via realtime | No change until manual refresh |
-| User clicks Refresh button | Refreshes | Refreshes (unchanged) |
-| User clicks sync icon on card | Syncs that card | Syncs that card (unchanged) |
-
----
-
-### Note on Broadcast
-
-The `broadcastRefresh` function becomes a no-op since there's no channel to broadcast on. This is intentional - we're removing ALL automatic refreshing to preserve user workflow stability.
