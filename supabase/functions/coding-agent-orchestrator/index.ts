@@ -669,28 +669,50 @@ serve(async (req) => {
 
     if (projectContext.standards?.length > 0) {
       const stds = projectContext.standards as any[];
-      const preview = stds
-        .slice(0, 10)
-        .map((s) => {
-          const code = s.code ? `${s.code} - ` : "";
-          const desc = s.description ? String(s.description).slice(0, 160) : "";
-          return `- ${code}${s.title}: ${desc}`;
-        })
-        .join("\n");
-      parts.push(`Standards (${stds.length} total, showing up to 10):\n${preview}`);
+      const allStandardsContent = stds.map((s: any) => {
+        const code = s.code || 'STD';
+        const title = s.title || 'Untitled Standard';
+        let standardStr = `### STANDARD: ${code} - ${title}`;
+        
+        if (s.description) {
+          standardStr += `\n**Description:** ${s.description}`;
+        }
+        
+        // Include main content (the markdown file content)
+        if (s.content) {
+          standardStr += `\n\n**Content:**\n${s.content}`;
+        }
+        
+        // Include long_description if present and different from content
+        if (s.long_description && s.long_description !== s.content) {
+          standardStr += `\n\n**Extended Documentation:**\n${s.long_description}`;
+        }
+        
+        return standardStr;
+      }).join("\n\n---\n\n");
+      
+      parts.push(`Standards (${stds.length} attached by user - FULL CONTENT):\n\n${allStandardsContent}`);
     }
 
     if (projectContext.techStacks?.length > 0) {
       const stacks = projectContext.techStacks as any[];
-      const preview = stacks
-        .slice(0, 10)
-        .map((t) => {
-          const type = t.type ? ` [${t.type}]` : "";
-          const desc = t.description ? String(t.description).slice(0, 120) : "";
-          return `- ${t.name}${type}: ${desc}`;
-        })
-        .join("\n");
-      parts.push(`Tech Stacks (${stacks.length} total, showing up to 10):\n${preview}`);
+      const allStacksContent = stacks.map((t: any) => {
+        const type = t.type ? ` [${t.type}]` : "";
+        const version = t.version ? ` v${t.version}` : "";
+        let stackStr = `### TECH STACK: ${t.name}${type}${version}`;
+        
+        if (t.description) {
+          stackStr += `\n**Description:** ${t.description}`;
+        }
+        
+        if (t.long_description) {
+          stackStr += `\n\n**Documentation:**\n${t.long_description}`;
+        }
+        
+        return stackStr;
+      }).join("\n\n---\n\n");
+      
+      parts.push(`Tech Stacks (${stacks.length} attached by user - FULL CONTENT):\n\n${allStacksContent}`);
     }
 
     if (projectContext.canvasNodes?.length > 0) {
