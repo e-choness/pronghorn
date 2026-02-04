@@ -156,13 +156,47 @@ serve(async (req) => {
       }
       
       if (attachedContext.standards?.length) {
-        parts.push(`STANDARDS:\n${attachedContext.standards.map((s: any) => 
-          `- ${s.name}: ${s.description || ''}`).join('\n')}`);
+        const allStandardsContent = attachedContext.standards.map((s: any) => {
+          const code = s.code || 'STD';
+          const title = s.title || s.name || 'Untitled Standard';
+          let standardStr = `### STANDARD: ${code} - ${title}`;
+          
+          if (s.description) {
+            standardStr += `\n**Description:** ${s.description}`;
+          }
+          
+          if (s.content) {
+            standardStr += `\n\n**Content:**\n${s.content}`;
+          }
+          
+          if (s.long_description && s.long_description !== s.content) {
+            standardStr += `\n\n**Extended Documentation:**\n${s.long_description}`;
+          }
+          
+          return standardStr;
+        }).join("\n\n---\n\n");
+        
+        parts.push(`ATTACHED STANDARDS (MANDATORY - FULL CONTENT):\n\n${allStandardsContent}`);
       }
       
       if (attachedContext.techStacks?.length) {
-        parts.push(`TECH STACKS:\n${attachedContext.techStacks.map((t: any) => 
-          `- ${t.name}: ${t.description || ''}`).join('\n')}`);
+        const allStacksContent = attachedContext.techStacks.map((t: any) => {
+          const type = t.type ? ` [${t.type}]` : "";
+          const version = t.version ? ` v${t.version}` : "";
+          let stackStr = `### TECH STACK: ${t.name}${type}${version}`;
+          
+          if (t.description) {
+            stackStr += `\n**Description:** ${t.description}`;
+          }
+          
+          if (t.long_description) {
+            stackStr += `\n\n**Documentation:**\n${t.long_description}`;
+          }
+          
+          return stackStr;
+        }).join("\n\n---\n\n");
+        
+        parts.push(`ATTACHED TECH STACKS (FULL CONTENT):\n\n${allStacksContent}`);
       }
       
       if (attachedContext.chatSessions?.length) {
@@ -186,6 +220,12 @@ serve(async (req) => {
       }
       
       attachedContextStr = parts.join('\n\n');
+      
+      // Add mandatory compliance reminder if standards are attached
+      if (attachedContext?.standards?.length > 0) {
+        attachedContextStr += `\n\n⚠️ MANDATORY COMPLIANCE: The user has attached ${attachedContext.standards.length} standard(s). Your edits MUST comply with these standards. Reference them explicitly in your reasoning.`;
+      }
+      
       console.log(`Attached context string length: ${attachedContextStr.length}`);
     }
 
