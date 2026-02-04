@@ -715,6 +715,11 @@ serve(async (req) => {
       parts.push(`Tech Stacks (${stacks.length} attached by user - FULL CONTENT):\n\n${allStacksContent}`);
     }
 
+    // Add mandatory standards compliance reminder near the end of context (recency bias)
+    if (projectContext.standards?.length > 0) {
+      parts.push(`\n⚠️ REMINDER: The user has attached ${projectContext.standards.length} MANDATORY STANDARD(S). You MUST follow them exactly. Do not use default patterns that conflict with the attached standards. If standards specify CSS files, components, layouts, or assets - use those, not generic Tailwind or default patterns.`);
+    }
+
     if (projectContext.canvasNodes?.length > 0) {
       const nodes = projectContext.canvasNodes as any[];
       const preview = nodes
